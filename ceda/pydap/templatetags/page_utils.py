@@ -54,3 +54,10 @@ def build_breadcrumbs(mount_path, pathlist):
 def calculate_dimensions(child):
     dimensions = child.dimensions or ['dim_%id' % j for j in range(len(child.shape))]
     return dimensions
+
+def parse_cookie(environ, key):
+    cookie = environ.get('paste.cookies')[0].get(key)
+    cookie_value = None
+    if cookie:
+        cookie_value = cookie.value
+    return cookie_value
