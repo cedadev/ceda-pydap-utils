@@ -33,7 +33,7 @@ class CEDAFileServer(FileServer):
         super(CEDAFileServer, self).__init__(*args, **config)
         
         loader = FileLoader(config.get('templates', 'templates'))
-        template_loader = FileSystemLoader( searchpath='/' )
+        template_loader = FileSystemLoader( searchpath=['/', loader.base_directory] )
         template_env = Environment( loader=template_loader )
         
         template_env.globals.update(page_utils.__dict__)
