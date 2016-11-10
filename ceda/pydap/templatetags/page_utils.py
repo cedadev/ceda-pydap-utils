@@ -37,7 +37,10 @@ def get_readme_title(directory):
 
 def build_breadcrumbs(mount_path, pathlist):
     # Initialise breadcrumbs with "home" url and label
-    breadcrumbs = [(mount_path, 'CEDA Data Server'),]
+    breadcrumbs = [
+        ('http://www.ceda.ac.uk/', 'CEDA'),
+        (mount_path, 'Data Server'),
+    ]
     
     count = 0
     for _ in pathlist:
