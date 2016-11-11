@@ -25,7 +25,8 @@ from ceda.pydap.templatetags import page_utils
 logger = logging.getLogger(__name__)
 
 HIDDEN_TAG = re.compile('^(HIDE|HIDDEN).*$')
-DEFAULT_LOGIN_URL = 'https://auth.ceda.ac.uk/account/signin/'
+LOGIN_URL = 'https://auth.ceda.ac.uk/account/signin/'
+CEDA_HOME_URL = 'http://www.ceda.ac.uk/'
 
 class CEDAFileServer(FileServer):
     
@@ -42,10 +43,12 @@ class CEDAFileServer(FileServer):
         self.renderer = Jinja2Renderer(
                 options={}, loader=loader, template_env=template_env)
         
-        self.login_url = config.get('login_url', DEFAULT_LOGIN_URL)
+        self.login_url = config.get('login_url', LOGIN_URL)
+        self.home_url = config.get('home_url', CEDA_HOME_URL)
     
     def __call__(self, environ, start_response):
         environ['login_url'] = self.login_url
+        environ['home_url'] = self.home_url
         environ.setdefault('pydap.renderer', self.renderer) 
         
         return super(CEDAFileServer, self).__call__(environ, start_response)

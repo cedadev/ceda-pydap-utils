@@ -35,10 +35,14 @@ def get_readme_title(directory):
     
     return readme_title
 
-def build_breadcrumbs(mount_path, pathlist):
+def calculate_dimensions(child):
+    dimensions = child.dimensions or ['dim_%id' % j for j in range(len(child.shape))]
+    return dimensions
+
+def build_breadcrumbs(environ, mount_path, pathlist):
     # Initialise breadcrumbs with "home" url and label
     breadcrumbs = [
-        ('http://www.ceda.ac.uk/', 'CEDA'),
+        (environ.get('home_url', ''), 'CEDA'),
         (mount_path, 'Data Server'),
     ]
     
@@ -53,10 +57,6 @@ def build_breadcrumbs(mount_path, pathlist):
         count += 1
     
     return breadcrumbs
-
-def calculate_dimensions(child):
-    dimensions = child.dimensions or ['dim_%id' % j for j in range(len(child.shape))]
-    return dimensions
 
 def parse_cookie(environ, key):
     cookie = environ.get('paste.cookies')[0].get(key)
