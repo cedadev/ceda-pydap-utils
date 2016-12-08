@@ -20,6 +20,8 @@ from pydap import model
 from pydap.wsgi.file import FileServer
 from pydap.util.template import FileLoader, Jinja2Renderer
 
+from paste.httpexceptions import HTTPNotFound
+
 from ceda.pydap.templatetags import page_utils
 
 logger = logging.getLogger(__name__)
@@ -47,9 +49,24 @@ class CEDAFileServer(FileServer):
         self.home_url = config.get('home_url', CEDA_HOME_URL)
     
     def __call__(self, environ, start_response):
+        path_info = environ.get('PATH_INFO', '')
+        
         environ['login_url'] = self.login_url
         environ['home_url'] = self.home_url
-        environ.setdefault('pydap.renderer', self.renderer) 
+        environ.setdefault('pydap.renderer', self.renderer)
+        
+        # check whether the path ends with a slash
+        if path_info.endswith(os.path.sep):
+            filepath = os.path.abspath(os.path.normpath(os.path.join(
+                    self.root,
+                    path_info.lstrip('/').replace('/', os.path.sep))))
+            assert filepath.startswith(self.root)  # check for ".." exploit
+            
+            # check for regular file or dir request
+            if os.path.exists(filepath):
+                # it is actually a file
+                if os.path.isfile(filepath):
+                    return HTTPNotFound()(environ, start_response)
         
         return super(CEDAFileServer, self).__call__(environ, start_response)
     
