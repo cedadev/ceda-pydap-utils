@@ -14,6 +14,9 @@ import os
 import re
 import logging
 
+from zipfile import ZipFile
+import shutil
+
 from jinja2 import FileSystemLoader, Environment
 
 from pydap import model
@@ -21,8 +24,10 @@ from pydap.wsgi.file import FileServer
 from pydap.util.template import FileLoader, Jinja2Renderer
 
 from paste.httpexceptions import HTTPNotFound
+from paste.fileapp import FileApp
 
 from ceda.pydap.templatetags import page_utils
+from ceda.pydap.utils.multi_download import download_files
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +60,8 @@ class CEDAFileServer(FileServer):
         environ['home_url'] = self.home_url
         environ.setdefault('pydap.renderer', self.renderer)
         
+        is_directory = False
+        
         # check whether the path ends with a slash
         if path_info.endswith(os.path.sep):
             filepath = os.path.abspath(os.path.normpath(os.path.join(
@@ -67,6 +74,12 @@ class CEDAFileServer(FileServer):
                 # it is actually a file
                 if os.path.isfile(filepath):
                     return HTTPNotFound()(environ, start_response)
+                # it is a directory
+                else:
+                    is_directory = True
+        
+        if is_directory:
+            pass
         
         return super(CEDAFileServer, self).__call__(environ, start_response)
     
