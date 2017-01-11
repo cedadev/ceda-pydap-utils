@@ -16,31 +16,31 @@
     <table>
       <tr>
         <td><b>Filespec:</b></td>
-        <td>*</td>
+        <td>{{ glob }}</td>
       </tr>
       <tr>
         <td><b>Depth:</b></td>
-        <td>2</td>
+        <td>{{ depth }}</td>
       </tr>
       <!-- Glob: "*" -->
       <tr>
         <td><b>Files selected for download:</b></td>
-        <td>6</td>
+        <td>{{ n_allowed }}</td>
       </tr>
       <tr>
         <td><b>Total size of selected files (bytes):</b></td>
-        <td>68,281 (66.7K)</td>
+        <td>{{ allowed_size }}</td>
       </tr>
       <tr>
         <td><b>Files you are not authorised to access:</b></td>
-        <td>0</td>
+        <td>{{ n_forbidden }}</td>
       </tr>
     </table>
     
     <form method="get">
-      <input type="hidden" name="glob" value="*">
-      <input type="hidden" name="depth" value="2">
-      <input name="action" value="Download" type="submit">
+      <input type="hidden" name="glob" value="{{ glob }}">
+      <input type="hidden" name="depth" value="{{ depth }}">
+      <input type="submit" name="action" value="Download">
     </form>
     
     <hr>
@@ -52,11 +52,13 @@
         <th></th>
         <th>Size (bytes)</th>
       </tr>
-      <tr>
-        <td>./00README</td>
-        <td WIDTH="10"></td>
-        <td ALIGN="right">23</td>
-      </tr>
+      {% for file in allowed_files %}
+        <tr>
+          <td>{{ file.relative_path }}</td>
+          <td WIDTH="10"></td>
+          <td ALIGN="right">{{ file.size }}</td>
+        </tr>
+      {% endfor %}
     </table>
     
   </body>

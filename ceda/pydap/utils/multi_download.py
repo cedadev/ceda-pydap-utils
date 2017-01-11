@@ -7,11 +7,20 @@ Created on 6 Jan 2017
 import os
 import re
 import gzip
+import time
+
+from email.utils import formatdate
+from zipfile import ZipFile
+from paste.fileapp import FileApp
+from paste.request import construct_url
+from pydap.lib import __version__
 
 from ceda.pydap.badc.web_page import subtabs, write_badc_header, BCK_COLOR
-from ceda.pydap.badc.web_file import WebFile
+#from ceda.pydap.badc.web_file import WebFile
 from ceda.pydap.badc.user_access_log import log_user_access
 from ceda.pydap.db_browser.utils import validate_filespec, commify
+from _curses_panel import new_panel
+from ceda.pydap.utils.file_access import check_authorisation
 
 # Valid root directory. Only files below this
 # directory can be accessed. For security purposes.
@@ -80,11 +89,61 @@ def main(path_info = None, glob = None, depth = 0, action = DEFAULT_ACTION, url 
         print_page ("You are not authorised to access directory {0}".format(dirspec))
 
 
-def list_download_files(rdirectory, glob, depth):
+def list_download_files(environ, start_response, directory, glob, depth):
     """
-    Prints html page containing list of files to be downloaded
+    Returns a view listing information about files to be downloaded
     """
     
+    files = identify_files(environ, directory, glob, depth)
+    
+    allowed_files = []
+    n_allowed, n_forbidden, allowed_size = selected_file_stats(files)
+    
+    for web_file in files:
+        if web_file.allowed:
+            file_path = web_file.full_path
+            
+            relative_path = ".{0}{1}".format(
+                os.path.sep,
+                os.path.relpath(file_path, directory)
+            )
+            
+            file_details = {
+                'relative_path': relative_path,
+                'size': web_file.size
+            }
+            
+            allowed_files.append(file_details)
+    
+    # Base URL.
+    location = construct_url(environ, with_query_string=False)
+    root = construct_url(environ, with_query_string=False, with_path_info=False).rstrip('/')
+    
+    context = {
+        'environ': environ,
+        'root': root,
+        'location': location,
+        'glob': glob,
+        'depth': depth,
+        'allowed_files': allowed_files,
+        'allowed_size': allowed_size,
+        'n_allowed': n_allowed,
+        'n_forbidden': n_forbidden,
+        'version': '.'.join(str(d) for d in __version__)
+    }
+    
+    renderer = environ.get('pydap.renderer')
+    template = renderer.loader('selected_files.html')
+    
+    content_type = 'text/html'
+    output = renderer.render(template, context, output_format=content_type)
+    
+    headers = [('Content-type', content_type)]
+    start_response("200 OK", headers)
+    
+    return [output.encode('utf-8')]
+    
+    '''
     directory = rdirectory.fullname
     
     write_header(rdirectory)
@@ -165,48 +224,32 @@ def list_download_files(rdirectory, glob, depth):
     
     print "</TABLE>\n"
     print "</body>\n</html>\n"
+    '''
 
 
-def selected_file_stats(rfiles):
-    """
-    Returns information about the total number and size of the files selected.
-    Returns the number of files for which access is allowed, the number of files
-    for which the user does not have read access and the total size of the files
-    for which access is allowed
-    
-    @param rfiles: Array of WebFile object references for selected files
-    """
-    
-    nAllowed = 0
-    nForbidden = 0
-    allowedSize = 0
-    
-    for rfile in rfiles:
-        ##   my ($access, $access_type) = $rfile->read_authorised;
-        access = None #TODO: NDG::Security::Weblogon::read_authorised($rfile->fullname);
-        
-        if access:
-            nAllowed += 1
-            allowedSize += rfile.size
-        else:
-            nForbidden += 1
-    
-    return (nAllowed, nForbidden, allowedSize)
-
-
-def download_files(rdir, glob, depth):
+def download_files(environ, start_response, directory, glob, depth):
     """
     Downloads the requested set of files as a single gzipped-tar file
     
-    @param rdir: Reference to object giving information about directory
+    @param directory: Reference to path of the active directory
     @param glob: Filename glob specifying files to be downloaded
     """
     
-    file_paths = identify_files(rdir, glob, depth)
+    file_paths = identify_files(environ, directory, glob, depth)
     
     with gzip.open(file_paths[0], 'rb') as f:
         file_content = f.read()
-        pass
+        
+        tmp_root = '/home/wat/dev/pydap/multi-file-download/tmp/test/'
+        
+        in_files = ['f1', 'f2', 'f3']
+        out_archive = tmp_root + 'archive.zip'
+        
+        with ZipFile(out_archive, mode='w') as zip_out:
+            for f in in_files:
+                zip_out.write(tmp_root + f, arcname=f)
+        
+        return FileApp(out_archive)(environ, start_response)
     
     '''TODO:
     rfiles = identify_files(rdir, glob, depth)
@@ -256,7 +299,25 @@ def download_files(rdir, glob, depth):
         '''
 
 
-def identify_files(rdirectory, glob_string, depth):
+class WebFile:
+    """
+    @param fullname: Full name of file
+    """
+    
+    def __init__(self, full_path, allowed):
+        self.full_path = full_path
+        self.allowed = allowed
+        
+        try:
+            self.size = self._calculate_size()
+        except os.error:
+            self.size = 0
+    
+    def _calculate_size(self):
+        return os.path.getsize(self.full_path)
+
+
+def identify_files(environ, directory, glob, depth):
     """
     Returns a list of WebFile object references for the files which have been 
     selected to download. This list includes files for which the user does not
@@ -275,9 +336,30 @@ def identify_files(rdirectory, glob_string, depth):
     
     files = []
     
-    for root, dirnames, filenames in os.walk(rdirectory):
+    assert os.path.isdir(directory)
+    max_depth = directory.count(os.path.sep) + (depth - 1)
+    
+    # Retrieve all files in directory
+    for root, dirnames, filenames in os.walk(directory):
+        
+        new_depth = root.count(os.path.sep)
+        if max_depth <= new_depth:
+            del dirnames[:]
+        
+        # Check each file to see if we should process it
         for filename in filenames:
-            files.append(root + os.path.sep + filename)
+            full_path = root + os.path.sep + filename
+            #TODO:
+            #if re.match(glob, filename):
+            
+            #TODO:
+            # Filter out unwanted files - files beginning with '.'  and index.html files
+            
+            # Check user authorisation
+            allowed = check_authorisation(environ, full_path)
+            
+            web_file = WebFile(full_path, allowed)
+            files.append(web_file)
     
     return files
     
@@ -318,8 +400,31 @@ def identify_files(rdirectory, glob_string, depth):
             if ( (substr($rfile->name,0,1) ne '.') && ($rfile->name ne "index.html") ):
                 push @rfiles, $rfile;
     '''
+
+
+def selected_file_stats(files):
+    """
+    Returns information about the total number and size of the files selected.
+    Returns the number of files for which access is allowed, the number of files
+    for which the user does not have read access and the total size of the files
+    for which access is allowed
     
-    return files
+    @param files: Array of WebFile references for selected files
+    """
+    
+    n_allowed = 0
+    n_forbidden = 0
+    allowed_size = 0
+    
+    for web_file in files:
+        
+        if web_file.allowed:
+            n_allowed += 1
+            allowed_size += web_file.size
+        else:
+            n_forbidden += 1
+    
+    return (n_allowed, n_forbidden, allowed_size)
 
 
 def write_header(rdirectory):

@@ -14,9 +14,6 @@ import os
 import re
 import logging
 
-from zipfile import ZipFile
-import shutil
-
 from jinja2 import FileSystemLoader, Environment
 
 from pydap import model
@@ -24,10 +21,10 @@ from pydap.wsgi.file import FileServer
 from pydap.util.template import FileLoader, Jinja2Renderer
 
 from paste.httpexceptions import HTTPNotFound
-from paste.fileapp import FileApp
+from paste.request import parse_formvars
 
 from ceda.pydap.templatetags import page_utils
-from ceda.pydap.utils.multi_download import download_files
+from ceda.pydap.utils.multi_download import list_download_files, download_files
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +76,12 @@ class CEDAFileServer(FileServer):
                     is_directory = True
         
         if is_directory:
-            pass
+            form = parse_formvars(environ)
+            if len(form) > 0:
+                glob = form.get('glob', '')
+                depth = int(form.get('depth', '1'))
+                
+                return list_download_files(environ, start_response, filepath, glob, depth)
         
         return super(CEDAFileServer, self).__call__(environ, start_response)
     
