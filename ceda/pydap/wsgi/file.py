@@ -32,6 +32,9 @@ HIDDEN_TAG = re.compile('^(HIDE|HIDDEN).*$')
 LOGIN_URL = 'https://auth.ceda.ac.uk/account/signin/'
 CEDA_HOME_URL = 'http://www.ceda.ac.uk/'
 
+SAML_TRUSTED_CA_DIR = ''
+ATTRIBUTE_SERVICE_URI = ''
+
 class CEDAFileServer(FileServer):
     
     def __init__(self, *args, **config):
@@ -49,12 +52,21 @@ class CEDAFileServer(FileServer):
         
         self.login_url = config.get('login_url', LOGIN_URL)
         self.home_url = config.get('home_url', CEDA_HOME_URL)
+        
+        self.saml_trusted_ca_dir = config.get('saml_trusted_ca_dir', SAML_TRUSTED_CA_DIR)
+        self.attribute_service_uri = config.get('attribute_service_uri', ATTRIBUTE_SERVICE_URI)
     
     def __call__(self, environ, start_response):
         path_info = environ.get('PATH_INFO', '')
         
+        environ['file_root'] = self.root
+        
         environ['login_url'] = self.login_url
         environ['home_url'] = self.home_url
+        
+        environ['saml_trusted_ca_dir'] = self.saml_trusted_ca_dir
+        environ['attribute_service_uri'] = self.attribute_service_uri
+        
         environ.setdefault('pydap.renderer', self.renderer)
         
         is_directory = False
@@ -81,7 +93,11 @@ class CEDAFileServer(FileServer):
                 glob = form.get('glob', '')
                 depth = int(form.get('depth', '1'))
                 
-                return list_download_files(environ, start_response, filepath, glob, depth)
+                action = form.get('action', '')
+                if action.lower() == 'download':
+                    return download_files(environ, start_response, filepath, glob, depth)
+                else:
+                    return list_download_files(environ, start_response, filepath, glob, depth)
         
         return super(CEDAFileServer, self).__call__(environ, start_response)
     

@@ -20,7 +20,7 @@ from ceda.pydap.badc.web_page import subtabs, write_badc_header, BCK_COLOR
 from ceda.pydap.badc.user_access_log import log_user_access
 from ceda.pydap.db_browser.utils import validate_filespec, commify
 from _curses_panel import new_panel
-from ceda.pydap.utils.file_access import check_authorisation
+from ceda.pydap.utils.file_access import FileAccess
 
 # Valid root directory. Only files below this
 # directory can be accessed. For security purposes.
@@ -346,6 +346,10 @@ def identify_files(environ, directory, glob, depth):
         if max_depth <= new_depth:
             del dirnames[:]
         
+        # Check user authorisation
+        file_access = FileAccess(environ.get('file_root'), root)
+        read_allowed = file_access.check_authorisation(environ, root)
+        
         # Check each file to see if we should process it
         for filename in filenames:
             full_path = root + os.path.sep + filename
@@ -355,10 +359,7 @@ def identify_files(environ, directory, glob, depth):
             #TODO:
             # Filter out unwanted files - files beginning with '.'  and index.html files
             
-            # Check user authorisation
-            allowed = check_authorisation(environ, full_path)
-            
-            web_file = WebFile(full_path, allowed)
+            web_file = WebFile(full_path, read_allowed)
             files.append(web_file)
     
     return files
