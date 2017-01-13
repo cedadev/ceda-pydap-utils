@@ -339,6 +339,8 @@ def identify_files(environ, directory, glob, depth):
     assert os.path.isdir(directory)
     max_depth = directory.count(os.path.sep) + (depth - 1)
     
+    file_access = FileAccess(environ.get('file_root'))
+    
     # Retrieve all files in directory
     for root, dirnames, filenames in os.walk(directory):
         
@@ -347,7 +349,6 @@ def identify_files(environ, directory, glob, depth):
             del dirnames[:]
         
         # Check user authorisation
-        file_access = FileAccess(environ.get('file_root'), root)
         read_allowed = file_access.check_authorisation(environ, root)
         
         # Check each file to see if we should process it
