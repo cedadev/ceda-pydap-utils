@@ -24,7 +24,7 @@ from paste.httpexceptions import HTTPNotFound
 from paste.request import parse_formvars
 
 from ceda.pydap.templatetags import page_utils
-from ceda.pydap.utils.multi_download import list_download_files, download_files
+from ceda.pydap.utils.multi_download import MultiFileView
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ LOGIN_URL = 'https://auth.ceda.ac.uk/account/signin/'
 CEDA_HOME_URL = 'http://www.ceda.ac.uk/'
 
 SAML_TRUSTED_CA_DIR = ''
-ATTRIBUTE_SERVICE_URI = ''
+AUTHZ_SERVICE_URI = ''
 
 class CEDAFileServer(FileServer):
     
@@ -53,8 +53,8 @@ class CEDAFileServer(FileServer):
         self.login_url = config.get('login_url', LOGIN_URL)
         self.home_url = config.get('home_url', CEDA_HOME_URL)
         
-        self.saml_trusted_ca_dir = config.get('saml_trusted_ca_dir', SAML_TRUSTED_CA_DIR)
-        self.attribute_service_uri = config.get('attribute_service_uri', ATTRIBUTE_SERVICE_URI)
+        self.saml_trusted_ca_dir = config.get('authz_decision_query_binding.saml_trusted_ca_dir', SAML_TRUSTED_CA_DIR)
+        self.authz_service_uri = config.get('authz_service_uri', AUTHZ_SERVICE_URI)
     
     def __call__(self, environ, start_response):
         path_info = environ.get('PATH_INFO', '')
@@ -65,7 +65,7 @@ class CEDAFileServer(FileServer):
         environ['home_url'] = self.home_url
         
         environ['saml_trusted_ca_dir'] = self.saml_trusted_ca_dir
-        environ['attribute_service_uri'] = self.attribute_service_uri
+        environ['authz_service_uri'] = self.authz_service_uri
         
         environ.setdefault('pydap.renderer', self.renderer)
         
@@ -93,11 +93,14 @@ class CEDAFileServer(FileServer):
                 glob = form.get('glob', '')
                 depth = int(form.get('depth', '1'))
                 
+                multi_file_view = MultiFileView(environ, filepath, glob, depth)
+                
                 action = form.get('action', '')
                 if action.lower() == 'download':
-                    return download_files(environ, start_response, filepath, glob, depth)
+                    return multi_file_view.download_files(start_response)
                 else:
-                    return list_download_files(environ, start_response, filepath, glob, depth)
+                    return multi_file_view.list_files(start_response)
+                    #return list_download_files(environ, start_response, filepath, glob, depth)
         
         return super(CEDAFileServer, self).__call__(environ, start_response)
     

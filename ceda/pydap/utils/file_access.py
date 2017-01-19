@@ -5,99 +5,50 @@ Created on 11 Jan 2017
 '''
 
 import os
-import re
+import webob
 
-from enum import Enum
+from ndg.saml.saml2.core import DecisionType
 
-from ceda.pydap.utils.saml import get_user_roles
-
-FTP_ACCESS_FILE = '.ftpaccess'
-
-READ_LIMIT_RE = '<limitread>'
-LIMIT_END_RE = '</limit>'
-
-
-class AccessRules(Enum):
-    ALLOW_ALL = 'allowall'
-    DENY_ALL = 'denyall'
-    ALLOW_GROUP = 'allowgroup'
-
-
-class AccessLimit:
-    ALLOW_DEFAULT = True
-    
-    def __init__(self, rules):
-        self.allow = self.ALLOW_DEFAULT
-        self.roles_required = []
-        
-        self._determine_limit(rules)
-    
-    def get_roles_required(self):
-        return self.roles_required
-    
-    def allowed(self):
-        if len(self.roles_required) > 0:
-            return True
-        else:
-            return self.allow
-    
-    def _determine_limit(self, rules):
-        for rule in rules:
-            rule = rule.split()
-            
-            name = rule[0]
-            properties = rule[1:]
-            
-            if name == AccessRules.ALLOW_ALL.value:
-                self.allow = True
-            elif name == AccessRules.DENY_ALL.value:
-                self.allow = False
-            elif name == AccessRules.ALLOW_GROUP.value:
-                self.roles_required = properties
+from ceda.pydap.utils.saml import get_authz_decision
 
 
 class FileAccess:
+    APPEND_STRING = 'APPEND'
     
-    def __init__(self, file_root):
-        self.file_root = file_root
-        self.rel_root = self._make_relative(file_root)
+    def __init__(self, environ):
+        self.environ = environ
+        request = webob.Request(environ)
+        self.application_url = request.application_url
+        # Nb. user may not be logged in hence REMOTE_USER is not set
+        self.remote_user = request.remote_user or ''
         
-        self.limits = {}
-        self._get_limit(self.rel_root)
+        self.file_root = environ.get('file_root')
     
-    def check_authorisation(self, environ, directory_path):
-        rel_path = self._make_relative(directory_path)
+    def has_access(self, path):
+        decision = self.authorisation_decision(path)
         
-        limit_tree = self._get_limit(rel_path)
-        
-        #TODO:
-        openid = environ.get('REMOTE_USER')
-        roles = get_user_roles(environ, openid)
-        if not roles:
-            roles = []
-        
-        return self._has_access(limit_tree, roles)
+        if decision == DecisionType.PERMIT:
+            return True
+        else:
+            return False
     
-    def _has_access(self, limit_tree, roles):
-        has_access = False
+    def authorisation_decision(self, path):
+        assert os.path.exists(path)
         
-        #TODO:
-        for limit in limit_tree:
-            if limit.allowed():
-                missing_role = False
-                for required_role in limit.get_roles_required():
-                    if not required_role in roles:
-                        missing_role = True
-                        break
-                
-                if not missing_role:
-                    has_access = True
+        rel_path = self._make_relative(path)
+        url = self._build_url(rel_path, os.path.isdir(path))
         
-        return has_access
+        decision = get_authz_decision(
+            self.environ,
+            url,
+            self.remote_user
+        )
+        
+        return decision
     
     def _make_relative(self, full_path):
-        assert os.path.isdir(full_path)
         abs_path = os.path.abspath(full_path)
+        
         prefix = os.path.commonprefix([abs_path, self.file_root])
         
         if prefix == self.file_root:
@@ -106,51 +57,15 @@ class FileAccess:
         else:
             return None
     
-    def _get_limit(self, directory):
-        limit_tree = []
+    def _build_url(self, rel_path, is_dir):
+        if not os.path.sep == '/':
+            rel_path = rel_path.replace(os.path.sep, '/')
         
-        cached_limit = self.limits.get(directory)
-        if cached_limit:
-            limit_tree.append(cached_limit)
-            return limit_tree
+        if is_dir:
+            url = ''.join([
+                self.application_url, '/',
+                rel_path, '/',
+                self.APPEND_STRING
+            ])
         
-        current_directory = directory
-        depth = directory.count(os.path.sep) + 1
-        while depth > 0:
-            rules = self._parse_access_file(current_directory)
-            
-            access_limit = AccessLimit(rules)
-            limit_tree.append(access_limit)
-            self.limits[current_directory] = access_limit
-            
-            current_directory = os.path.dirname(current_directory)
-            depth -= 1
-        
-        if not directory == self.rel_root:
-            limit_tree.append(self.limits.get(self.rel_root))
-        
-        return limit_tree
-    
-    def _parse_access_file(self, directory):
-        ftp_access_path = os.path.join(
-            self.file_root, directory, FTP_ACCESS_FILE
-        )
-        
-        rules = []
-        if os.path.exists(ftp_access_path):
-            with open(ftp_access_path) as access_file:
-                
-                read_limit_open = False
-                for line in access_file:
-                    line_clean = ''.join(line.split()).lower()
-                    if re.match(READ_LIMIT_RE, line_clean):
-                        read_limit_open = True
-                        
-                    elif read_limit_open:
-                        if not re.match(LIMIT_END_RE, line_clean):
-                            line = ' '.join(line.split()).lower()
-                            rules.append(line)
-                        else:
-                            break
-        
-        return rules
+        return url

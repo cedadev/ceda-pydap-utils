@@ -37,11 +37,20 @@
       </tr>
     </table>
     
+    {% if over_size_limit %}
+      <p>
+        <b>Sorry, you can only download up to {{ MAX_DOWNLOAD_SIZE }}
+        bytes. Please reduce your selection and try again. You may
+        find that <a href="/help/ftp_guide.html">FTP</a> is a more
+        convenient way of downloading this data.</b>
+      </p>
+    {% else %}
     <form method="get">
       <input type="hidden" name="glob" value="{{ glob }}">
       <input type="hidden" name="depth" value="{{ depth }}">
       <input type="submit" name="action" value="Download">
     </form>
+    {% endif %}
     
     <hr>
     

@@ -11,63 +11,88 @@ from uuid import uuid4
 
 from OpenSSL.SSL import Error
 
+from urllib2 import URLError
+
 from ndg.saml.saml2.binding.soap.client.attributequery import \
                                                     AttributeQuerySslSOAPBinding
 from ndg.saml.saml2.binding.soap.client.requestbase import RequestResponseError
 from ndg.saml.saml2.core import (AttributeQuery, SAMLVersion, Attribute, Issuer,
-                                 Subject, NameID)
+                                 Subject, NameID, DecisionType)
+
+from ndg.soap.client import UrlLib2SOAPClientError
+from ndg.saml.saml2.core import (Issuer, Subject, NameID)
+from ndg.saml.saml2.binding.soap.client.authzdecisionquery import \
+                                            AuthzDecisionQuerySslSOAPBinding
+from ndg.saml.utils.factory import AuthzDecisionQueryFactory
+
+logger = logging.getLogger(__name__)
 
 
-def get_user_roles(environ, openid):
-    '''Get the roles of a user, return a list of roles'''
-    if openid:
-        user_roles = _get_roles_from_openid(environ, openid)
-    
-        return user_roles
-
-
-def _get_roles_from_openid(environ, openid):
-    logger = logging.getLogger(__name__)
-    query = AttributeQuery()
-    
+def get_authz_decision(environ, url, remote_user):
     saml_trusted_ca_dir = environ.get('saml_trusted_ca_dir', '')
-    attribute_service_uri = environ.get('attribute_service_uri', '')
+    authz_service_uri = environ.get('authz_service_uri', '')
     
-    query.version = SAMLVersion(SAMLVersion.VERSION_20)
-    query.id = str(uuid4())
-    query.issueInstant = datetime.utcnow()
+    client_binding = AuthzDecisionQuerySslSOAPBinding()
+    client_binding.sslCACertDir = saml_trusted_ca_dir
+    client_binding.clockSkewTolerance = 1 # 1 second tolerance
+    
+    # Make a new query object
+    query = AuthzDecisionQueryFactory.create()
+    
+    # Copy constant settings. These constants were set at 
+    # initialisation
+    query.subject = Subject()
+    query.subject.nameID = NameID()
+    query.subject.nameID.format = 'urn:esg:openid'
     
     query.issuer = Issuer()
     query.issuer.format = Issuer.X509_SUBJECT
-    query.issuer.value = '/O=STFC/OU=SPBU/CN=test'
+    query.issuer.value = 'O=NDG, OU=Security, CN=localhost'
+   
+    # Set dynamic settings particular to this individual request 
+    query.subject.nameID.value = remote_user
+    query.resource = url
     
-    query.subject = Subject()
-    query.subject.nameID = NameID()
-    query.subject.nameID.format = "urn:esg:openid"
-    query.subject.nameID.value = openid
-    
-    # Specify what attributes want to query for - CEDA roles
-    ceda_roles = Attribute()
-    ceda_roles.name = "urn:ceda:security:authz:1.0:attr"
-    ceda_roles.nameFormat = "http://www.w3.org/2001/XMLSchema#string"
-    
-    query.attributes.append(ceda_roles)
-    
-    # Prepare web service call and despatch
-    request = AttributeQuerySslSOAPBinding()
-    request.sslCACertDir = saml_trusted_ca_dir
-    request.clockSkewTolerance = 1 # 1 second tolerance
-    
-    ceda_role_names = []
     try:
-        response = request.send(query, uri=attribute_service_uri)
-        for assertion in response.assertions:
-            for statement in assertion.attributeStatements:
-                for attribute in statement.attributes:
-                    if attribute.name == ceda_roles.name:
-                        for attr_value in attribute.attributeValues:
-                            ceda_role_names.append(attr_value.value)
-    except (RequestResponseError, Error) as e:
-        logger.error("Error processing SOAP query for {0}: {1}".format(openid, e))
+        saml_authz_response = client_binding.send(query,
+                                             uri=authz_service_uri)
+        
+    except (UrlLib2SOAPClientError, URLError) as e:
+        import traceback
+        
+        if isinstance(e, UrlLib2SOAPClientError):
+            logger.error("Error, HTTP %s response from authorisation "
+                      "service %r requesting access to %r: %s", 
+                      e.urllib2Response.code,
+                      authz_service_uri, 
+                      url,
+                      traceback.format_exc())
+        else:
+            logger.error("Error, calling authorisation service %r "
+                      "requesting access to %r: %s", 
+                      authz_service_uri, 
+                      url,
+                      traceback.format_exc())
     
-    return ceda_role_names
+    assertions = saml_authz_response.assertions
+    
+    # Set HTTP 403 Forbidden response if any of the decisions returned are
+    # deny or indeterminate status
+    fail_decisions = (DecisionType.DENY, #@UndefinedVariable
+                     DecisionType.INDETERMINATE) #@UndefinedVariable
+    
+    # Review decision statement(s) in assertions and enforce the decision
+    assertion = None
+    for assertion in assertions:
+        for authz_decision_statement in assertion.authzDecisionStatements:
+            assertion = authz_decision_statement.decision.value
+            if assertion in fail_decisions:
+                break
+
+    if assertion is None:
+        logger.error(
+            "No assertions set in authorisation decision response "
+            "from {0}".format(authz_service_uri)
+        )
+    
+    return assertion
