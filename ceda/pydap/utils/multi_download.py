@@ -18,9 +18,6 @@ from pydap.lib import __version__
 
 from ceda.pydap.utils.file_access import FileAccess
 
-# Valid root directory. Only files below this
-# directory can be accessed. For security purposes.
-VALID_ROOTS = ['/badc', 'neodc']
 # Max size (in uncompressed bytes) that can be downloaded
 MAX_DOWNLOAD_SIZE = 3000000000
 # Maximum number of files to display on a page
@@ -35,11 +32,11 @@ DEFAULT_ACTION = "none"
 
 class WebFile:
     """
-    @param fullname: Full name of file
+    @param full_path: Full path of file
+    @param allowed: Whether or not the file is readable by the remote user
     """
     
-    def __init__(self, file_root, full_path, allowed):
-        self.root = file_root
+    def __init__(self, full_path, allowed):
         self.full_path = full_path
         
         self.allowed = allowed
@@ -54,10 +51,21 @@ class WebFile:
 
 
 class MultiFileHandler:
+    '''
+    Class providing utilities for identifying multiple files
+    within a directory using Unix-style glob pattern matching
+    '''
     
-    def __init__(self, environ, directory, glob_string='*', max_depth='1'):
+    DISALLOWED_FILENAMES = ['index.html']
+    
+    def __init__(self, environ, directory, glob_string='*', max_depth=1):
         assert os.path.isdir(directory)
         self.directory = directory
+        
+        self.disallowed_filenames = environ.get(
+            'disallowed_filenames',
+            self.DISALLOWED_FILENAMES
+        )
         
         self.file_access = FileAccess(environ)
         self.identify_files(directory, glob_string, max_depth)
@@ -83,8 +91,8 @@ class MultiFileHandler:
         self.max_depth = max_depth
         
         # Retrieve all files in directory
-        depth = 1
-        self._glob_traverse(directory, glob_string, depth)
+        current_depth = 1
+        self._glob_traverse(directory, glob_string, current_depth)
         
         return self.files
     
@@ -112,10 +120,21 @@ class MultiFileHandler:
         
         return (n_allowed, n_forbidden, allowed_size)
     
-    def _glob_traverse(self, directory, glob_string, depth):
+    def _glob_traverse(self, directory, glob_string, current_depth):
+        '''
+        Recursively descend, depth first, into a directory based on
+        glob pattern and maximum depth. Saves new WebFile objects from
+        discovered file paths.
+        '''
         
-        if depth <= self.max_depth:
-            full_glob = os.path.join(directory, glob_string)
+        if current_depth <= self.max_depth:
+            
+            # Grab the left-most glob expression
+            parts = glob_string.split(os.path.sep)
+            #TODO:
+            current_glob = parts[0]
+            remaining_glob = os.path.sep.join(parts[1:])
+            full_glob = os.path.join(directory, current_glob)
             
             # Check user authorisation for directory
             read_allowed = self.file_access.has_access(directory)
@@ -128,23 +147,34 @@ class MultiFileHandler:
                     # Filter out unwanted files - files beginning with '.'  and index.html files
                     filename = os.path.basename(path)
                     if self._is_valid(filename):
-                        web_file = WebFile(directory, path, read_allowed)
+                        web_file = WebFile(path, read_allowed)
                         self.files.append(web_file)
                     
                 elif os.path.isdir(path):
-                    new_depth = depth + 1
-                    self._glob_traverse(path, glob_string, new_depth)
+                    new_depth = current_depth + 1
+                    self._glob_traverse(path, remaining_glob, new_depth)
     
     def _is_valid(self, filename):
+        '''
+        Checks that a file name does not begin with a dot matches
+        a forbidden string.
+        '''
         is_valid = True
         
-        if filename.startswith('.') or filename == 'index.html':
+        if filename.startswith('.'):
+            is_valid = False
+        
+        if filename in self.disallowed_filenames:
             is_valid = False
         
         return is_valid
 
 
 class MultiFileView:
+    '''
+    Class for serving different multi-file download views
+    using a Jinja2 template engine and a MultiFileHandler.
+    '''
     
     def __init__(self, environ, directory, glob_string='*', depth=1):
         self.environ = environ
@@ -158,7 +188,7 @@ class MultiFileView:
         self.depth = depth
         
         # Validate path
-        directory = validate_path(directory)
+        directory = validate_path(environ.get('file_root'), directory)
         self.directory = directory
         
         self.multi_file_handler = MultiFileHandler(
@@ -230,8 +260,9 @@ class MultiFileView:
         
         web_files = self.multi_file_handler.files
         
-        tmp_root = '/home/wat/dev/pydap/multi-file-download/tmp/test/'
-        out_archive = tmp_root + 'archive.zip'
+        default_tmp_dir = os.path.join(os.path.dirname(__file__), 'tmp')
+        tmp_root = self.environ.get('tmp_root', default_tmp_dir)
+        out_archive = os.path.join(tmp_root, 'archive.zip')
         
         with ZipFile(out_archive, mode='w') as zip_out:
             for web_file in web_files:
@@ -248,26 +279,13 @@ class MultiFileView:
         
         os.remove(out_archive)
         
-        '''TODO:
-        #  Tar and gzip the files and dump to standard output. Using an unknown mime
-        #  type for the content-type will force users browser to save to disk. 
-        #  --exclude option is simply to allow identification of processes started
-        #  via mget (sometimes they run on and use lots of cpu).
-        print "Content-type: BADCdata\n\n";
-        chdir $dirspec;
-        my $cmd = "timeout 6000 /usr/bin/nice tar -h --exclude this_is_mget -cf - @filenames | /bin/gzip -c";   
-        #   print STDERR "mget cmd: $cmd\n";
-        system ("$cmd");
-        
-        #  Log each file downloaded. Do it after the downloading so we know that the
-        #  user has really got it
-        for $rfile in (@rdownloads):
-            DBrowserUtils::log_file_access ("dbrowser-mget", $rfile, $Cgi);
-        '''
-        
         return get_result
 
     def _build_context(self, allowed_files):
+        '''
+        Constructs the context required for rendering a Jinja2 template
+        '''
+        
         # Base URL.
         location = construct_url(
             self.environ,
@@ -299,55 +317,19 @@ class MultiFileView:
         return context
 
 
-def write_header(rdirectory):
-    """
-    Writes html header for download page
-    """
-    
-    print (
-        "<<EOT",
-        "Content-type: text/html",
-        
-        "<html>",
-        "<head>",
-        "<title>",
-        "Download selected files",
-        "</title>",
-        "</head>",
-        "<body bgcolor={0}>".format("#ffffff"),
-        "<h2>Download selected files</h2>",
-        "<hr>",
-        "EOT"
-    )
-
-
 def validate_glob(glob_string):
+    '''
+    Checks a glob pattern's structure
+    returns a valid glob pattern
+    '''
+    
+    if os.path.sep in glob_string and not glob_string.startswith('*'):
+        glob_string = '*' + glob_string
     
     return glob_string
-    
-    '''TODO:
-    if re.match('m/^[\/\w\.\-\+\*\?\[\]]*$/', glob_string):
-        # If glob has directory separator then make sure it starts with a '*'
-        if re.match('/.*\/.*/', glob_string):
-            if not re.match('/^\*/', glob_string):
-                glob_string = "*" + glob_string
-        
-        return glob_string
-    else:
-        #TODO:
-        return None
-        (
-            "Invalid characters used in match expression $glob<p>",
-            "Valid characters are:<p>",
-            "* Matches zero or more characters<br>",
-            "? Matches any single character<br>",
-            "[ ] Matches any of characters specified within brackets<p>",
-            "In addition, the / character is used as a directory separator.<p>",
-            "For more information, see the help page."
-        )
-    '''
 
-def validate_path(path):
+
+def validate_path(application_root, path):
     """
     Checks that the given file specification is valid.  
     
@@ -362,13 +344,25 @@ def validate_path(path):
     Have now added a separate check for file in the 'requests' directory. User
     is only allowed to see their own sub-directory.
     
-    @param valid_root: Valid top level directory for file, eg "/badc"
+    @param application_root: top level directory for serving files
     """
     
-    return path
-    
     # Check for "../", which could be used to change directory
+    path = os.path.abspath(path)
     
-    # Check that file exists
+    # Remove any trailing slash
+    path = path.rstrip(os.path.sep)
     
-    # Remove any trailing slash. ASH 12/11/03
+    # Check that path exists
+    if not os.path.exists(path):
+        #TODO:
+        return None
+    
+    # Check that the path and application have a common root
+    prefix = os.path.commonprefix([path, application_root])
+    
+    if not prefix == application_root:
+        #TODO:
+        return None
+    
+    return path
