@@ -5,8 +5,8 @@ Created on 6 Jan 2017
 '''
 
 import os
-import re
 import glob
+import tempfile
 
 import logging
 logger = logging.getLogger(__name__)
@@ -48,6 +48,9 @@ class WebFile:
     
     def _calculate_size(self):
         return os.path.getsize(self.full_path)
+    
+    def __lt__(self, other):
+        return self.full_path.__lt__(other.full_path)
 
 
 class MultiFileHandler:
@@ -129,11 +132,18 @@ class MultiFileHandler:
         
         if current_depth <= self.max_depth:
             
-            # Grab the left-most glob expression
-            parts = glob_string.split(os.path.sep)
-            #TODO:
+            parts = filter(None, glob_string.split(os.path.sep))
+            
+            # Add missing glob parts according to max depth
+            num_missing = self.max_depth - len(parts) - current_depth + 1
+            for _ in range(num_missing):
+                parts.append('*')
+            
+            # Grab the left-most glob expression and reimainder
             current_glob = parts[0]
-            remaining_glob = os.path.sep.join(parts[1:])
+            parts = parts[1:]
+            remaining_glob = os.path.sep.join(parts)
+            
             full_glob = os.path.join(directory, current_glob)
             
             # Check user authorisation for directory
@@ -204,12 +214,15 @@ class MultiFileView:
         """
         
         web_files = self.multi_file_handler.files
+        web_files = sorted(web_files)
         
         n_files = 0
         allowed_files = []
+        over_size_limit = False
         for web_file in web_files:
             n_files += 1
             if n_files >= MAX_DISPLAY_FILES:
+                over_size_limit = True
                 break
             
             if web_file.allowed:
@@ -227,22 +240,20 @@ class MultiFileView:
                 
                 allowed_files.append(file_details)
         
-        context = self._build_context(allowed_files)
+        context = self._build_context()
         
-        renderer = self.environ.get('pydap.renderer')
-        template = renderer.loader('selected_files.html')
+        n_allowed, n_forbidden, allowed_size = self.multi_file_handler.file_stats()
+        context.update({
+            'allowed_size': allowed_size,
+            'n_allowed': n_allowed,
+            'n_forbidden': n_forbidden,
+            'allowed_files': allowed_files,
+            'over_size_limit': over_size_limit,
+            'MAX_DOWNLOAD_SIZE': MAX_DOWNLOAD_SIZE
+        })
+        template = 'selected_files.html'
         
-        content_type = 'text/html'
-        output = renderer.render(
-            template,
-            context,
-            output_format=content_type
-        )
-        
-        headers = [('Content-type', content_type)]
-        start_response("200 OK", headers)
-        
-        return [output.encode('utf-8')]
+        return self._render_response(start_response, template, context)
     
     def download_files(self, start_response):
         """
@@ -255,33 +266,58 @@ class MultiFileView:
         # Check total size of files and exit with error message if too big
         _, _, allowedSize = self.multi_file_handler.file_stats()
         if allowedSize > MAX_DOWNLOAD_SIZE:
-            #TODO:
-            return None
+            error_message = "Max file size exceeded."
+            return self._error_response(start_response, error_message)
         
         web_files = self.multi_file_handler.files
         
-        default_tmp_dir = os.path.join(os.path.dirname(__file__), 'tmp')
-        tmp_root = self.environ.get('tmp_root', default_tmp_dir)
-        out_archive = os.path.join(tmp_root, 'archive.zip')
+        tmp_root = tempfile.mkdtemp()
+        out_archive = os.path.join(tmp_root, 'archive'+ EXT)
         
-        with ZipFile(out_archive, mode='w') as zip_out:
-            for web_file in web_files:
-                if web_file.allowed:
-                    full_path = web_file.full_path
-                    rel_path = os.path.relpath(full_path, self.directory)
-                    
-                    zip_out.write(full_path, arcname=rel_path)
-            
-            zip_out.close()
-            
-            file_app = FileApp(out_archive)
-            get_result = file_app.get(self.environ, start_response)
-        
-        os.remove(out_archive)
+        try:
+            with ZipFile(out_archive, mode='w') as zip_out:
+                for web_file in web_files:
+                    if web_file.allowed:
+                        full_path = web_file.full_path
+                        rel_path = os.path.relpath(full_path, self.directory)
+                        
+                        zip_out.write(full_path, arcname=rel_path)
+                
+                zip_out.close()
+                
+                file_app = FileApp(out_archive)
+                get_result = file_app.get(self.environ, start_response)
+        finally:
+            os.remove(out_archive)
+            os.rmdir(tmp_root)
         
         return get_result
-
-    def _build_context(self, allowed_files):
+    
+    def _render_response(self, start_response, template_file, context, response_code='200 OK'):
+        renderer = self.environ.get('pydap.renderer')
+        template = renderer.loader(template_file)
+        
+        content_type = 'text/html'
+        output = renderer.render(
+            template,
+            context,
+            output_format=content_type
+        )
+        
+        headers = [('Content-type', content_type)]
+        start_response(response_code, headers)
+        
+        return [output.encode('utf-8')]
+    
+    def _error_response(self, start_response, message, code = '400 Bad Request'):
+        context = {
+            'error_message': message,
+            'error_code': code
+        }
+        
+        return self._render_response(start_response, 'files_error.html', context, code)
+    
+    def _build_context(self):
         '''
         Constructs the context required for rendering a Jinja2 template
         '''
@@ -299,18 +335,12 @@ class MultiFileView:
         )
         root = root.rstrip('/')
         
-        n_allowed, n_forbidden, allowed_size = self.multi_file_handler.file_stats()
-        
         context = {
             'environ': self.environ,
             'root': root,
             'location': location,
             'glob': self.glob_string,
             'depth': self.depth,
-            'allowed_files': allowed_files,
-            'allowed_size': allowed_size,
-            'n_allowed': n_allowed,
-            'n_forbidden': n_forbidden,
             'version': '.'.join(str(d) for d in __version__)
         }
         
@@ -355,14 +385,12 @@ def validate_path(application_root, path):
     
     # Check that path exists
     if not os.path.exists(path):
-        #TODO:
-        return None
+        raise ValueError('Path does not exist')
     
     # Check that the path and application have a common root
     prefix = os.path.commonprefix([path, application_root])
     
     if not prefix == application_root:
-        #TODO:
-        return None
+        raise ValueError('Path root does not match application root')
     
     return path

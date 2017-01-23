@@ -93,14 +93,19 @@ class CEDAFileServer(FileServer):
                 glob = form.get('glob', '')
                 depth = int(form.get('depth', '1'))
                 
-                multi_file_view = MultiFileView(environ, filepath, glob, depth)
-                
-                action = form.get('action', '')
-                if action.lower() == 'download':
-                    return multi_file_view.download_files(start_response)
-                else:
-                    return multi_file_view.list_files(start_response)
-                    #return list_download_files(environ, start_response, filepath, glob, depth)
+                try:
+                    multi_file_view = MultiFileView(environ, filepath, glob, depth)
+                    
+                    action = form.get('action', '')
+                    if action.lower() == 'download':
+                        return multi_file_view.download_files(start_response)
+                    else:
+                        return multi_file_view.list_files(start_response)
+                except ValueError as e:
+                    logger.error((
+                        "An exception has occurred parsing "
+                        "multiple files for {0}: {1}".format(filepath, e)
+                    ))
         
         return super(CEDAFileServer, self).__call__(environ, start_response)
     
