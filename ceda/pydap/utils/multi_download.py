@@ -6,13 +6,12 @@ Created on 6 Jan 2017
 
 import os
 import glob
-import tempfile
+import subprocess
 
 import logging
 logger = logging.getLogger(__name__)
 
-from zipfile import ZipFile
-from paste.fileapp import FileApp
+from paste.fileapp import DataApp
 from paste.request import construct_url
 from pydap.lib import __version__
 
@@ -264,32 +263,21 @@ class MultiFileView:
         """
         
         # Check total size of files and exit with error message if too big
-        _, _, allowedSize = self.multi_file_handler.file_stats()
-        if allowedSize > MAX_DOWNLOAD_SIZE:
+        _, _, allowed_size = self.multi_file_handler.file_stats()
+        if allowed_size > MAX_DOWNLOAD_SIZE:
             error_message = "Max file size exceeded."
             return self._error_response(start_response, error_message)
         
         web_files = self.multi_file_handler.files
         
-        tmp_root = tempfile.mkdtemp()
-        out_archive = os.path.join(tmp_root, 'archive'+ EXT)
+        cmd = ['timeout', '6000', 'nice', 'tar', '-h', '-cf', '-']
+        for web_file in web_files:
+            cmd.append(web_file.full_path)
+        cmd = cmd + ['|', 'gzip', '-c']
         
-        try:
-            with ZipFile(out_archive, mode='w') as zip_out:
-                for web_file in web_files:
-                    if web_file.allowed:
-                        full_path = web_file.full_path
-                        rel_path = os.path.relpath(full_path, self.directory)
-                        
-                        zip_out.write(full_path, arcname=rel_path)
-                
-                zip_out.close()
-                
-                file_app = FileApp(out_archive)
-                get_result = file_app.get(self.environ, start_response)
-        finally:
-            os.remove(out_archive)
-            os.rmdir(tmp_root)
+        pipe = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+        out, _ = pipe.communicate()
+        get_result = DataApp(out).get(self.environ, start_response)
         
         return get_result
     
