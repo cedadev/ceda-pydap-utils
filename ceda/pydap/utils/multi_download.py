@@ -11,11 +11,11 @@ import subprocess
 import logging
 logger = logging.getLogger(__name__)
 
-from paste.fileapp import DataApp
 from paste.request import construct_url
 from pydap.lib import __version__
 
 from ceda.pydap.utils.file_access import FileAccess
+from ceda.pydap.utils.responses import ZipFileApp
 
 # Max size (in uncompressed bytes) that can be downloaded
 MAX_DOWNLOAD_SIZE = 3000000000
@@ -270,16 +270,21 @@ class MultiFileView:
         
         web_files = self.multi_file_handler.files
         
-        cmd = ['timeout', '6000', 'nice', 'tar', '-h', '-cf', '-']
+        # Compose subprocess command for generating a zip
+        cmd = ['timeout', '6000', 'nice', 'zip', '-Z', 'store', '-b', '-O', '-']
+        base_path = self.directory
         for web_file in web_files:
-            cmd.append(web_file.full_path)
-        cmd = cmd + ['|', 'gzip', '-c']
+            filename = os.path.relpath(web_file.full_path, base_path)
+            cmd.append(filename)
         
-        pipe = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-        out, _ = pipe.communicate()
-        get_result = DataApp(out).get(self.environ, start_response)
+        # Generate an response from the command
+        pipe = subprocess.Popen(cmd, stdout=subprocess.PIPE, cwd=base_path)
+        out = pipe.stdout
+        app = ZipFileApp(out)
         
-        return get_result
+        # Begin response and return iterable file object
+        result = app.get(self.environ, start_response)
+        return result
     
     def _render_response(self, start_response, template_file, context, response_code='200 OK'):
         renderer = self.environ.get('pydap.renderer')
