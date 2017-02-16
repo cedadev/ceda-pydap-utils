@@ -5,6 +5,7 @@ This class contains file serving features that are
 specific to the CEDA implementation of PyDAP.
 
 """
+from ceda.pydap.utils.file_plot import FilePlotView
 
 __author__ = "William Tucker"
 __copyright__ = "Copyright (c) 2014, Science & Technology Facilities Council (STFC)"
@@ -71,13 +72,13 @@ class CEDAFileServer(FileServer):
         
         is_directory = False
         
+        filepath = os.path.abspath(os.path.normpath(os.path.join(
+                self.root,
+                path_info.lstrip('/').replace('/', os.path.sep))))
+        assert filepath.startswith(self.root)  # check for ".." exploit
+        
         # check whether the path ends with a slash
         if path_info.endswith(os.path.sep):
-            filepath = os.path.abspath(os.path.normpath(os.path.join(
-                    self.root,
-                    path_info.lstrip('/').replace('/', os.path.sep))))
-            assert filepath.startswith(self.root)  # check for ".." exploit
-            
             # check for regular file or dir request
             if os.path.exists(filepath):
                 # it is actually a file
@@ -87,8 +88,8 @@ class CEDAFileServer(FileServer):
                 else:
                     is_directory = True
         
+        form = parse_formvars(environ)
         if is_directory:
-            form = parse_formvars(environ)
             if len(form) > 0:
                 glob = form.get('glob', '')
                 depth = int(form.get('depth', '1'))
@@ -106,6 +107,13 @@ class CEDAFileServer(FileServer):
                         "An exception has occurred parsing "
                         "multiple files for {0}: {1}".format(filepath, e)
                     ))
+        elif 'plot' in form:
+            file_plot_view = FilePlotView(environ, filepath, form)
+            
+            if form.get('plot') == 'img':
+                return file_plot_view.generate(start_response)
+            else:
+                return file_plot_view.form(start_response)
         
         return super(CEDAFileServer, self).__call__(environ, start_response)
     
