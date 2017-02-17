@@ -9,11 +9,21 @@ import io
 import nappy
 import matplotlib
 
+from enum import Enum
+
 from ceda.pydap.utils.responses import DataPlotApp
 
 matplotlib.use('Agg')
 from matplotlib import pyplot
 from paste.request import construct_url
+
+
+class Comparison(Enum):
+    EQUALS = 'eq'
+    GREATER_THAN = 'gt'
+    GREATER_EQUAL = 'ge'
+    LESS_THAN = 'lt'
+    LESS_EQUAL = 'le'
 
 
 class FilePlotView:
@@ -23,26 +33,55 @@ class FilePlotView:
     
     IMG_FORMAT = 'png'
     
+    PLOT_STYLE_DEFAULTS = {
+        'marker': None,
+        'markeredgewidth': 0.5,
+        'linestyle': None,
+        'linewidth': 0.5,
+        'color': 'k'
+        
+    }
+    
     MAP_OMIT_CMP = [
-        ('eq', '='),
-        ('gt', '&gt;'),
-        ('ge', '&gt;='),
-        ('lt', '&lt;'),
-        ('le', '&lt;='),
+        (Comparison.EQUALS.value, '='),
+        (Comparison.GREATER_THAN.value, '&gt;'),
+        (Comparison.GREATER_EQUAL.value, '&gt;='),
+        (Comparison.LESS_THAN.value, '&lt;'),
+        (Comparison.LESS_EQUAL.value, '&lt;='),
     ]
     
     MAP_SYMBOL = [
-        ('1', 'Plus sign'),
-        ('2', 'Asterisk'),
-        ('3', 'Period'),
-        ('4', 'Diamond'),
-        ('7', 'X'),
+        ('1', 'Plus sign', {'marker': '+'}),
+        ('2', 'Circle', {'marker': '.', 'markerfacecolor': 'w'}),
+        ('3', 'Period', {'marker': ','}),
+        ('4', 'Diamond', {'marker': 'd', 'markerfacecolor': 'w'}),
+        ('7', 'X', {'marker': 'x'}),
     ]
     
     MAP_CONNECT = [
-        ('y', 'Yes'),
-        ('n', 'No'),
+        ('y', 'Yes', {'linestyle': None}),
+        ('n', 'No', {'linestyle': ' '}),
     ]
+    
+    FORM_VARS = [
+        'var',
+        'xvar',
+        'omit_var',
+        'omit_cmp',
+        'omit_value',
+        'ymin',
+        'ymax',
+        'xmin',
+        'xmax',
+        'symbol',
+        'connect',
+    ]
+    
+    FORM_DEFAULTS = {
+        'omit_cmp': Comparison.EQUALS.value,
+        'symbol': '3',
+        'connect': 'y',
+    }
     
     def __init__(self, environ, file_path, form):
         self.environ = environ
@@ -52,21 +91,16 @@ class FilePlotView:
         self.file_path = file_path
         
         self.form_map = {
-            'var': None,
-            'xvar': None,
-            'omit_var': None,
             'omit_cmp': self.MAP_OMIT_CMP,
-            'omit_value': None,
-            'ymin': None,
-            'ymax': None,
-            'xmin': None,
-            'xmax': None,
             'symbol': self.MAP_SYMBOL,
             'connect': self.MAP_CONNECT,
         }
         
+        self.form_defaults = self.FORM_DEFAULTS.copy()
+        
+        self._parse_variables()
+        
         self.form_vars = self._parse_form_vars(form)
-        self._map_variables()
     
     def form(self, start_response):
         """
@@ -91,21 +125,20 @@ class FilePlotView:
         xmin = self.form_vars.get('xmin')
         xmax = self.form_vars.get('xmax')
         if xmin and xmax:
-            x_limits = [int(xmax), int(xmin)]
+            x_limits = [int(xmin), int(xmax)]
         
         y_limits = None
         ymin = self.form_vars.get('ymin')
         ymax = self.form_vars.get('ymax')
         if ymin and ymax:
-            y_limits = [int(ymax), int(ymin)]
+            y_limits = [int(ymin), int(ymax)]
         
         x_var_name = self._translate_form_value('xvar', self.form_vars.get('xvar'))
         y_var_name = self._translate_form_value('var', self.form_vars.get('var'))
+        omit_var_name = self._translate_form_value('omit_var', self.form_vars.get('omit_var'))
         
         x_var_miss = []
         y_var_miss = []
-        
-        marker = None
         
         na = read_data(self.file_path)
         
@@ -118,6 +151,8 @@ class FilePlotView:
             if var_name == y_var_name:
                 y_var_miss = [na.VMISS[i]]
                 y_var_data = na.V[i]
+            if var_name == omit_var_name:
+                omit_var_data = na.V[i]
         
         default_x_name = na.XNAME[0]
         if default_x_name == x_var_name:
@@ -125,8 +160,27 @@ class FilePlotView:
         if default_x_name == y_var_name:
             y_var_data = na.X
         
-        x_var_data = list(filter_miss_values(x_var_data, x_var_miss))
-        y_var_data = list(filter_miss_values(y_var_data, y_var_miss))
+        try: 
+            omit_value = int(self.form_vars.get('omit_value'))
+        except TypeError:
+            omit_value = self.form_vars.get('omit_value')
+        omit_mode = self.form_vars.get('omit_cmp')
+        
+        x_var_data = list(filter_data(x_var_data, x_var_miss, omit_var_data, omit_value, omit_mode))
+        y_var_data = list(filter_data(y_var_data, y_var_miss, omit_var_data, omit_value, omit_mode))
+        
+        # Cosmetics
+        plot_style = self.PLOT_STYLE_DEFAULTS.copy()
+        
+        symbol = self.form_vars.get('symbol')
+        for key, _, style in self.form_map.get('symbol'):
+            if key == symbol:
+                plot_style.update(style)
+        
+        connect = self.form_vars.get('connect')
+        for key, _, style in self.form_map.get('connect'):
+            if key == connect:
+                plot_style.update(style)
         
         file_url = construct_url(
             self.environ,
@@ -134,7 +188,7 @@ class FilePlotView:
         )
         
         plot = plot_data(na, file_url, x_var_name, x_var_data, y_var_name, y_var_data,
-             x_limits=x_limits, y_limits=y_limits, marker=marker)
+             x_limits=x_limits, y_limits=y_limits, style=plot_style)
         
         file_object = io.BytesIO()
         pyplot.savefig(file_object, format=self.IMG_FORMAT)
@@ -152,14 +206,16 @@ class FilePlotView:
         
         form_vars = {}
         
-        for key in self.form_map.keys():
+        for key in self.FORM_VARS:
             value = form.get(key)
             if value:
                 form_vars[key] = value
+            else:
+                form_vars[key] = self.form_defaults.get(key)
         
         return form_vars
     
-    def _map_variables(self):
+    def _parse_variables(self):
         
         na = read_data(self.file_path)
         
@@ -180,8 +236,13 @@ class FilePlotView:
         y_map.append(('-2', na.XNAME[0]))
         
         self.form_map['var'] = y_map
+        self.form_defaults['var'] = '0'
+        
         self.form_map['xvar'] = x_map
+        self.form_defaults['xvar'] = '-1'
+        
         self.form_map['omit_var'] = o_map
+        self.form_defaults['omit_var'] = '0'
     
     def _translate_form_value(self, field, input_value):
         field_map = self.form_map.get(field)
@@ -203,7 +264,7 @@ class FilePlotView:
                 option = option_list[i]
                 
                 if isinstance(option, tuple):
-                    field_index, name = option
+                    field_index, name = option[:2]
                 else:
                     field_index = i
                     name = option
@@ -299,7 +360,7 @@ def plot_title_info(na, fpath, plt):
     plt.figtext(.5, .85, 'Mission: %s' % na.MNAME, fontsize=16, ha='center')
 
 def plot_data(na_obj, fpath, vname1, vdata1, vname2, vdata2,
-              x_limits=None, y_limits=None, marker=None):
+              x_limits=None, y_limits=None, style=None):
     pyplot.xlabel(vname1)
     pyplot.ylabel(vname2)
     plot_title_info(na_obj, fpath, pyplot)
@@ -308,18 +369,46 @@ def plot_data(na_obj, fpath, vname1, vdata1, vname2, vdata2,
         pyplot.xlim(x_limits)
     if y_limits:
         pyplot.ylim(y_limits)
-
-    if not marker: marker = 'r'
-    pyplot.plot(vdata1, vdata2, marker)
+    
+    # Point markers with a joined line don't look very nice
+    if style.get('marker') == ',' and not style.get('linestyle'):
+        style['marker'] = None
+    
+    pyplot.plot(vdata1, vdata2, **style)
     
     return pyplot
 
-def filter_miss_values(data, miss_values):
-    for point in data:
-        if not point in miss_values:
-            yield point
-        else:
+def filter_data(data, forbid_values, omit_data, omit_value, omit_mode=Comparison.EQUALS.value):
+    
+    for i in range(len(data)):
+        value = data[i]
+        
+        if value in forbid_values:
             yield None
+        elif should_omit(omit_data[i], omit_value, omit_mode):
+            yield None
+        else:
+            yield value
+
+def should_omit(value, omit_value, omit_mode=Comparison.EQUALS.value):
+    omit = False
+    
+    if omit_mode == Comparison.EQUALS.value:
+        omit = value == omit_value
+        
+    elif omit_mode == Comparison.GREATER_THAN.value:
+        omit = value > omit_value
+        
+    elif omit_mode == Comparison.GREATER_EQUAL.value:
+        omit = value >= omit_value
+        
+    elif omit_mode == Comparison.LESS_THAN.value:
+        omit = value < omit_value
+        
+    elif omit_mode == Comparison.LESS_EQUAL.value:
+        omit = value <= omit_value
+    
+    return omit
 
 def validate_path(application_root, path):
     """
