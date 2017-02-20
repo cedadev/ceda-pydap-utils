@@ -19,6 +19,9 @@ from paste.request import construct_url
 
 
 class Comparison(Enum):
+    """
+    Comparison form options
+    """
     EQUALS = 'eq'
     GREATER_THAN = 'gt'
     GREATER_EQUAL = 'ge'
@@ -28,11 +31,14 @@ class Comparison(Enum):
 
 class FilePlotView:
     """
-    
+    View for generating NASA Ames file plots
     """
+    
+    PLOT_FORM_TEMPLATE = 'file_plot.html'
     
     IMG_FORMAT = 'png'
     
+    # Default values for matplotlib plot output
     PLOT_STYLE_DEFAULTS = {
         'marker': None,
         'markeredgewidth': 0.5,
@@ -41,6 +47,8 @@ class FilePlotView:
         'color': 'k'
         
     }
+    
+    # Mappings for form input processing
     
     MAP_OMIT_CMP = [
         (Comparison.EQUALS.value, '='),
@@ -63,6 +71,7 @@ class FilePlotView:
         ('n', 'No', {'linestyle': ' '}),
     ]
     
+    # List of possible field ids
     FORM_VARS = [
         'var',
         'xvar',
@@ -77,6 +86,7 @@ class FilePlotView:
         'connect',
     ]
     
+    # Form field default values
     FORM_DEFAULTS = {
         'omit_cmp': Comparison.EQUALS.value,
         'symbol': '3',
@@ -84,12 +94,21 @@ class FilePlotView:
     }
     
     def __init__(self, environ, file_path, form):
+        """
+        Constructor for FilePlotView
+        
+        @param file_path: path to the NA file
+        @param form: dictionary containing a user's input
+        """
+        
         self.environ = environ
         
         # Validate path
         file_path = validate_path(environ.get('file_root'), file_path)
         self.file_path = file_path
         
+        # the map is used when rendering the form
+        # template in order to populate options
         self.form_map = {
             'omit_cmp': self.MAP_OMIT_CMP,
             'symbol': self.MAP_SYMBOL,
@@ -98,13 +117,16 @@ class FilePlotView:
         
         self.form_defaults = self.FORM_DEFAULTS.copy()
         
+        # retrieve variable information from the NA file
         self._parse_variables()
         
+        # set form vars using defaults or user-submitted values
         self.form_vars = self._parse_form_vars(form)
     
     def form(self, start_response):
         """
-        
+        Construct the plotting UI and return the page from template
+        Page contains the user input form and plot output img element
         """
         
         options = {}
@@ -112,14 +134,18 @@ class FilePlotView:
             options[var_name] = self._get_field_values(var_name, var_map)
         
         context = self._build_context(**options)
-        template = 'file_plot.html'
+        template = self.PLOT_FORM_TEMPLATE
         
         return self._render_response(start_response, template, context)
     
     def generate(self, start_response):
         """
-        
+        Generate's a plot of the data using input from
+        the user's form submission.
+        Handles streaming of img reponse to user.
         """
+        
+        # Define limits each axis
         
         x_limits = None
         xmin = self.form_vars.get('xmin')
@@ -133,6 +159,7 @@ class FilePlotView:
         if ymin and ymax:
             y_limits = [int(ymin), int(ymax)]
         
+        # Grab canonical variable names from form-submitted keys
         x_var_name = self._translate_form_value('xvar', self.form_vars.get('xvar'))
         y_var_name = self._translate_form_value('var', self.form_vars.get('var'))
         omit_var_name = self._translate_form_value('omit_var', self.form_vars.get('omit_var'))
@@ -140,11 +167,13 @@ class FilePlotView:
         x_var_miss = []
         y_var_miss = []
         
+        # Read the NA file
         na = read_data(self.file_path)
         
         for i in range(na.NV):
             var_name = na.VNAME[i]
             
+            # Grab data matching our variable names
             if var_name == x_var_name:
                 x_var_miss = [na.VMISS[i]]
                 x_var_data = na.V[i]
@@ -154,6 +183,7 @@ class FilePlotView:
             if var_name == omit_var_name:
                 omit_var_data = na.V[i]
         
+        # The default X variable is selected separately
         default_x_name = na.XNAME[0]
         if default_x_name == x_var_name:
             x_var_data = na.X
@@ -166,6 +196,7 @@ class FilePlotView:
             omit_value = self.form_vars.get('omit_value')
         omit_mode = self.form_vars.get('omit_cmp')
         
+        # Filter data based on user constraints and file-defined miss values
         x_var_data = list(filter_data(x_var_data, x_var_miss, omit_var_data, omit_value, omit_mode))
         y_var_data = list(filter_data(y_var_data, y_var_miss, omit_var_data, omit_value, omit_mode))
         
@@ -187,6 +218,7 @@ class FilePlotView:
             with_query_string=False
         )
         
+        # Generate the plot
         plot = plot_data(na, file_url, x_var_name, x_var_data, y_var_name, y_var_data,
              x_limits=x_limits, y_limits=y_limits, style=plot_style)
         
@@ -203,7 +235,10 @@ class FilePlotView:
         return result
     
     def _parse_form_vars(self, form):
-        
+        """
+        Parse a form to populate form_vars.
+        Default values are used if no input is provided.
+        """
         form_vars = {}
         
         for key in self.FORM_VARS:
@@ -216,7 +251,10 @@ class FilePlotView:
         return form_vars
     
     def _parse_variables(self):
-        
+        """
+        Reads a NASA Ames file and populates form_map and
+        form_defaults based on variable information
+        """
         na = read_data(self.file_path)
         
         y_map = []
@@ -245,6 +283,9 @@ class FilePlotView:
         self.form_defaults['omit_var'] = '0'
     
     def _translate_form_value(self, field, input_value):
+        """
+        Parse user form field input as a key for a field map
+        """
         field_map = self.form_map.get(field)
         
         if field_map:
@@ -255,6 +296,14 @@ class FilePlotView:
         return None
     
     def _get_field_values(self, field, option_list=None):
+        """
+        Return template-compatible form information for
+        a specific field
+        
+        @param field: id of the form field
+        @param options_list: list of possible options for
+                             multiple-select fields
+        """
         current_value = self.form_vars.get(field)
         
         if option_list:
@@ -339,6 +388,9 @@ class FilePlotView:
         return context
     
     def _build_img_vars(self):
+        """
+        Construct a string of HTML parameters from the current form values.
+        """
         
         var_string = '?plot=img'
         for key, value in self.form_vars.items():
@@ -349,6 +401,10 @@ class FilePlotView:
 
 
 def read_data(file_path):
+    """
+    Read data from a NASA Ames file
+    """
+    
     na_file = nappy.openNAFile(file_path) 
     na_file.readData()
     
@@ -360,7 +416,11 @@ def plot_title_info(na, fpath, plt):
     plt.figtext(.5, .85, 'Mission: %s' % na.MNAME, fontsize=16, ha='center')
 
 def plot_data(na_obj, fpath, vname1, vdata1, vname2, vdata2,
-              x_limits=None, y_limits=None, style=None):
+              x_limits=None, y_limits=None, style={}):
+    """
+    Draws a graph from the data using a specified style.
+    """
+    
     pyplot.xlabel(vname1)
     pyplot.ylabel(vname2)
     plot_title_info(na_obj, fpath, pyplot)
@@ -379,6 +439,9 @@ def plot_data(na_obj, fpath, vname1, vdata1, vname2, vdata2,
     return pyplot
 
 def filter_data(data, forbid_values, omit_data, omit_value, omit_mode=Comparison.EQUALS.value):
+    """
+    Return an iterator for the dataset with selected outliers nulled
+    """
     
     for i in range(len(data)):
         value = data[i]
@@ -391,6 +454,9 @@ def filter_data(data, forbid_values, omit_data, omit_value, omit_mode=Comparison
             yield value
 
 def should_omit(value, omit_value, omit_mode=Comparison.EQUALS.value):
+    """
+    Compare omit value with chosen omit mode.
+    """
     omit = False
     
     if omit_mode == Comparison.EQUALS.value:

@@ -8,6 +8,7 @@ __copyright__ = "Copyright (c) 2014, Science & Technology Facilities Council (ST
 __license__ = "BSD - see LICENSE file in top-level directory"
 
 import os
+import re
 import logging
 
 from __builtin__ import len
@@ -22,6 +23,8 @@ from urlparse import urlparse
 logger = logging.getLogger(__name__)
 
 README_NAME = '00README'
+
+NA_MATCH_REGEX = '.*\.(em1|em2|em3|nox|cn7|fm1|jn1|jo1|jo4|o30|pr1|pn2|hc5)$'
 
 def get_readme_title(directory):
     readme_title = ''
@@ -64,3 +67,9 @@ def parse_cookie(environ, key):
     if cookie:
         cookie_value = cookie.value
     return cookie_value
+
+def is_na_file(file_name):
+    na_pattern = re.compile(NA_MATCH_REGEX)
+    
+    if na_pattern.match(file_name):
+        return True
