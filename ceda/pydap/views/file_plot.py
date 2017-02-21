@@ -397,8 +397,8 @@ def read_data(file_path):
     return na_file
 
 def plot_title_info(na, fpath, plt):
-    plt.figtext(.5, .95, 'Source: %s' % na.SNAME, fontsize=16, ha='center') 
-    plt.figtext(.5, .9, 'Mission: %s' % na.MNAME, fontsize=16, ha='center')
+    plt.figtext(.5, .95, 'Source: %s' % na.SNAME, fontsize=12, ha='center') 
+    plt.figtext(.5, .9, 'Mission: %s' % na.MNAME, fontsize=12, ha='center')
 
 def plot_data(na_obj, fpath, vname1, vdata1, vname2, vdata2,
               x_limits=None, y_limits=None, style={}):
