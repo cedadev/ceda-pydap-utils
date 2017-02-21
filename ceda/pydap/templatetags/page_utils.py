@@ -2,7 +2,6 @@
 A set of functions for use in a Jinja2 template.
 
 """
-from ceda.pydap.views.file_plot import read_data, NAReadException
 
 __author__ = "William Tucker"
 __copyright__ = "Copyright (c) 2014, Science & Technology Facilities Council (STFC)"
@@ -87,8 +86,8 @@ def is_na_file(environ, file_name):
     assert file_path.startswith(root) # check for ".." exploit
     
     try:
-        na_file = read_data(file_path)
+        na_file = nappy.openNAFile(file_path)
         if na_file:
             return True
-    except NAReadException:
+    except (TypeError, ValueError):
         return False
