@@ -171,21 +171,31 @@ class FilePlotView(ViewResponse):
         # Define limits each axis
         
         x_limits = None
-        xmin = self.form_vars.get('xmin')
-        xmax = self.form_vars.get('xmax')
-        if xmin and xmax:
-            x_limits = [float(xmin), float(xmax)]
+        try:
+            xmin = self.form_vars.get('xmin')
+            xmax = self.form_vars.get('xmax')
+            if xmin and xmax:
+                x_limits = [float(xmin), float(xmax)]
+        except ValueError:
+            pass
         
         y_limits = None
-        ymin = self.form_vars.get('ymin')
-        ymax = self.form_vars.get('ymax')
-        if ymin and ymax:
-            y_limits = [float(ymin), float(ymax)]
+        try:
+            ymin = self.form_vars.get('ymin')
+            ymax = self.form_vars.get('ymax')
+            if ymin and ymax:
+                y_limits = [float(ymin), float(ymax)]
+        except ValueError:
+            pass
         
         # Grab canonical variable names from form-submitted keys
         x_var_name = self._translate_form_value('xvar', self.form_vars.get('xvar'))
         y_var_name = self._translate_form_value('var', self.form_vars.get('var'))
         omit_var_name = self._translate_form_value('omit_var', self.form_vars.get('omit_var'))
+        
+        x_var_data = None
+        y_var_data = None
+        omit_var_data = None
         
         x_var_miss = []
         y_var_miss = []
@@ -216,15 +226,19 @@ class FilePlotView(ViewResponse):
         if default_x_name == y_var_name:
             y_var_data = na.X
         
-        try: 
+        try:
             omit_value = int(self.form_vars.get('omit_value'))
-        except TypeError:
+        except (TypeError, ValueError):
             omit_value = self.form_vars.get('omit_value')
         omit_mode = self.form_vars.get('omit_cmp')
         
-        # Filter data based on user constraints and file-defined miss values
-        x_var_data = list(filter_data(x_var_data, x_var_miss, omit_var_data, omit_value, omit_mode))
-        y_var_data = list(filter_data(y_var_data, y_var_miss, omit_var_data, omit_value, omit_mode))
+        if x_var_data and y_var_data:
+            # Filter data based on user constraints and file-defined miss values
+            x_var_data = list(filter_data(x_var_data, x_var_miss, omit_var_data, omit_value, omit_mode))
+            y_var_data = list(filter_data(y_var_data, y_var_miss, omit_var_data, omit_value, omit_mode))
+        else:
+            x_var_data = []
+            y_var_data = []
         
         # Cosmetics
         plot_style = self.PLOT_STYLE_DEFAULTS.copy()
@@ -420,7 +434,7 @@ def filter_data(data, forbid_values, omit_data, omit_value, omit_mode=Comparison
         
         if value in forbid_values:
             yield None
-        elif should_omit(omit_data[i], omit_value, omit_mode):
+        elif omit_data and should_omit(omit_data[i], omit_value, omit_mode):
             yield None
         else:
             yield value
