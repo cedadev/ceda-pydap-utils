@@ -174,13 +174,13 @@ class FilePlotView(ViewResponse):
         xmin = self.form_vars.get('xmin')
         xmax = self.form_vars.get('xmax')
         if xmin and xmax:
-            x_limits = [int(xmin), int(xmax)]
+            x_limits = [float(xmin), float(xmax)]
         
         y_limits = None
         ymin = self.form_vars.get('ymin')
         ymax = self.form_vars.get('ymax')
         if ymin and ymax:
-            y_limits = [int(ymin), int(ymax)]
+            y_limits = [float(ymin), float(ymax)]
         
         # Grab canonical variable names from form-submitted keys
         x_var_name = self._translate_form_value('xvar', self.form_vars.get('xvar'))
