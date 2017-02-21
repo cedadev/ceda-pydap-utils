@@ -1,0 +1,101 @@
+<html>
+  
+  <head>
+    <title>
+      Plot data file
+    </title>
+  </head>
+  
+  <body>
+    <div>
+      <img border="1" src="{{ img_url }}" height="400" width="650">
+    </div>
+    
+    <div>
+    <form method="get" action="{{ location }}">
+    <table border="1">
+    <tr>
+    <td>
+    <table border="1">
+      <tr>
+      <td>
+        <b>Plot: </b>
+        <input type="hidden" name="plot" value="">
+      </td>
+      <td colspan="2">
+        <select name="var" size="1">
+          {% for value, name, selected in var %}
+          <option value="{{ value }}" {% if selected %}selected{% endif %}>{{ name }}
+          {% endfor %}
+        </select>
+        against 
+        <select name="xvar" size="1">
+          {% for value, name, selected in xvar %}
+          <option value="{{ value }}" {% if selected %}selected{% endif %}>{{ name }}
+          {% endfor %}
+        </select>
+        &nbsp;
+        <input type="submit" value="Go">
+      </td>
+      </tr>
+      <tr>
+      <td>
+      <b>Omit points: </b> 
+      </td>
+      <td colspan="2">
+        Where: 
+        <select name="omit_var" size="1">
+          {% for value, name, selected in omit_var %}
+          <option value="{{ value }}" {% if selected %}selected{% endif %}>{{ name }}
+          {% endfor %}
+        </select>
+        <select name="omit_cmp" size="1">
+          {% for value, name, selected in omit_cmp %}
+          <option value="{{ value }}" {% if selected %}selected{% endif %}>{{ name }}
+          {% endfor %}
+        </select>
+      <input type="text" name="omit_value" size="8" maxlength="12" value="{{ omit_value }}">
+      </td>
+      </tr>
+      <tr>
+      <td>
+        <b>Scale </b>
+      </td>
+      <td colspan="2" nowrap>
+        Ymin: 
+        <input type="text" name="ymin" size="8" maxlength="10" value="{{ ymin }}">
+        Ymax: 
+        <input type="text" name="ymax" size="8" maxlength="10" value="{{ ymax }}">
+        Xmin: 
+        <input type="text" name="xmin" size="8" maxlength="10" value="{{ xmin }}">
+        Xmax: 
+        <input type="text" name="xmax" size="8" maxlength="10" value="{{ xmax }}">
+        <input type="button" value="Reset" onClick="xmin.value='';xmax.value='';ymin.value='';ymax.value=''">
+      </td>
+      </tr>
+      <tr>
+      <td>
+      <b>Plot Symbol</b>
+      </td>
+      <td nowrap>
+        {% for value, name, selected in symbol %}
+        &nbsp; {{ name }}<input type="radio" name="symbol" value="{{ value }}" {% if selected %}checked{% endif %}>
+        {% endfor %}
+      </td>
+      <td>
+      <b>Connect points?</b><br>
+        {% for value, name, selected in connect %}
+        {{ name }}<input type="radio" name="connect" value="{{ value }}" {% if selected %}checked{% endif %}>
+        {% endfor %}
+      </td>
+      </tr>
+    </table>
+    </td>
+    </tr>
+    </table>
+  </form>
+  </div>
+
+  </body>
+  
+</html>

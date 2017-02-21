@@ -8,7 +8,9 @@ __copyright__ = "Copyright (c) 2014, Science & Technology Facilities Council (ST
 __license__ = "BSD - see LICENSE file in top-level directory"
 
 import os
+import re
 import logging
+import nappy
 
 from __builtin__ import len
 from __builtin__ import isinstance
@@ -22,6 +24,8 @@ from urlparse import urlparse
 logger = logging.getLogger(__name__)
 
 README_NAME = '00README'
+
+NA_MATCH_REGEX = '.*\.(na)$'
 
 def get_readme_title(directory):
     readme_title = ''
@@ -64,3 +68,26 @@ def parse_cookie(environ, key):
     if cookie:
         cookie_value = cookie.value
     return cookie_value
+
+def is_na_file(environ, file_name):
+    na_pattern = re.compile(NA_MATCH_REGEX)
+    
+    if na_pattern.match(file_name):
+        return True
+    
+    path_info = environ.get('PATH_INFO', '').lstrip('/').replace('/', os.path.sep)
+    root = environ.get('file_root')
+    
+    file_path = os.path.abspath(os.path.normpath(os.path.join(
+        root,
+        path_info,
+        file_name
+    )))
+    assert file_path.startswith(root) # check for ".." exploit
+    
+    try:
+        na_file = nappy.openNAFile(file_path)
+        if na_file:
+            return True
+    except (TypeError, ValueError):
+        return False

@@ -5,6 +5,7 @@ This class contains file serving features that are
 specific to the CEDA implementation of PyDAP.
 
 """
+from ceda.pydap.views.file_plot import FilePlotView
 
 __author__ = "William Tucker"
 __copyright__ = "Copyright (c) 2014, Science & Technology Facilities Council (STFC)"
@@ -24,7 +25,7 @@ from paste.httpexceptions import HTTPNotFound
 from paste.request import parse_formvars
 
 from ceda.pydap.templatetags import page_utils
-from ceda.pydap.utils.multi_download import MultiFileView
+from ceda.pydap.views.multi_download import MultiFileView
 
 logger = logging.getLogger(__name__)
 
@@ -71,13 +72,13 @@ class CEDAFileServer(FileServer):
         
         is_directory = False
         
+        filepath = os.path.abspath(os.path.normpath(os.path.join(
+                self.root,
+                path_info.lstrip('/').replace('/', os.path.sep))))
+        assert filepath.startswith(self.root)  # check for ".." exploit
+        
         # check whether the path ends with a slash
         if path_info.endswith(os.path.sep):
-            filepath = os.path.abspath(os.path.normpath(os.path.join(
-                    self.root,
-                    path_info.lstrip('/').replace('/', os.path.sep))))
-            assert filepath.startswith(self.root)  # check for ".." exploit
-            
             # check for regular file or dir request
             if os.path.exists(filepath):
                 # it is actually a file
@@ -87,25 +88,32 @@ class CEDAFileServer(FileServer):
                 else:
                     is_directory = True
         
+        form = parse_formvars(environ)
         if is_directory:
-            form = parse_formvars(environ)
             if len(form) > 0:
                 glob = form.get('glob', '')
                 depth = int(form.get('depth', '1'))
                 
                 try:
-                    multi_file_view = MultiFileView(environ, filepath, glob, depth)
+                    multi_file_view = MultiFileView(environ, start_response, filepath, glob, depth)
                     
                     action = form.get('action', '')
                     if action.lower() == 'download':
-                        return multi_file_view.download_files(start_response)
+                        return multi_file_view.download_files()
                     else:
-                        return multi_file_view.list_files(start_response)
+                        return multi_file_view.list_files()
                 except ValueError as e:
                     logger.error((
                         "An exception has occurred parsing "
                         "multiple files for {0}: {1}".format(filepath, e)
                     ))
+        elif 'plot' in form:
+            file_plot_view = FilePlotView(environ, start_response, filepath, form)
+            
+            if form.get('plot') == 'img':
+                return file_plot_view.generate()
+            else:
+                return file_plot_view.form()
         
         return super(CEDAFileServer, self).__call__(environ, start_response)
     

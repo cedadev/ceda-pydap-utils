@@ -37,6 +37,30 @@ class ZipFileApp(object):
         
         return _FileIter(self.file_object)
 
+
+class DataPlotApp(object):
+    """
+    Returns an application that will package the output of
+    a matplotlib plot in a streamable object
+    """
+    
+    def __init__(self, file_object, headers=None, **kwargs):
+        self.file_object = file_object
+        
+        self.headers = []
+        
+        content_type = get_header(CONTENT_TYPE_HEADER)
+        content_type.update(self.headers, 'image/png')
+        
+        accept_ranges = get_header(ACCEPT_RANGES_HEADER)
+        accept_ranges.update(self.headers, bytes=True)
+    
+    def get(self, environ, start_response):
+        start_response('200 OK', self.headers)
+        
+        return _FileIter(self.file_object)
+
+
 class _FileIter(object):
 
     def __init__(self, file_ref, block_size=None, size=None):
