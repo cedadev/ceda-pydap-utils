@@ -6,17 +6,22 @@ Created on 14 Feb 2017
 
 import os
 import io
+import logging
 import nappy
 import matplotlib
 
 from enum import Enum
 
-from ceda.pydap.utils.responses import DataPlotApp
+from ceda.pydap.views.response.response import DataPlotApp
+from ceda.pydap.views.view_response import ViewResponse
+from ceda.pydap.utils.file.path_utils import validate_path
 
 matplotlib.use('Agg')
 from matplotlib import pyplot
 from paste.request import construct_url
 
+
+logger = logging.getLogger(__name__)
 
 class Comparison(Enum):
     """
@@ -29,7 +34,11 @@ class Comparison(Enum):
     LESS_EQUAL = 'le'
 
 
-class FilePlotView:
+class NAReadException(Exception):
+    pass
+
+
+class FilePlotView(ViewResponse):
     """
     View for generating NASA Ames file plots
     """
@@ -93,7 +102,7 @@ class FilePlotView:
         'connect': 'y',
     }
     
-    def __init__(self, environ, file_path, form):
+    def __init__(self, environ, start_response, file_path, form):
         """
         Constructor for FilePlotView
         
@@ -101,7 +110,7 @@ class FilePlotView:
         @param form: dictionary containing a user's input
         """
         
-        self.environ = environ
+        super(FilePlotView, self).__init__(environ, start_response)
         
         # Validate path
         file_path = validate_path(environ.get('file_root'), file_path)
@@ -118,27 +127,41 @@ class FilePlotView:
         self.form_defaults = self.FORM_DEFAULTS.copy()
         
         # retrieve variable information from the NA file
-        self._parse_variables()
+        try:
+            self._parse_variables()
+        except NAReadException as e:
+            logger.debug(str(e))
         
         # set form vars using defaults or user-submitted values
         self.form_vars = self._parse_form_vars(form)
     
-    def form(self, start_response):
+    def form(self):
         """
         Construct the plotting UI and return the page from template
         Page contains the user input form and plot output img element
         """
         
-        options = {}
+        file_name = os.path.basename(self.file_path)
+        
+        location = construct_url(
+            self.environ,
+            with_query_string=False
+        )
+        img_url = location + self._build_img_vars()
+        
+        options = {
+            'file_name': file_name,
+            'img_url': img_url
+        }
         for var_name, var_map in self.form_map.items():
             options[var_name] = self._get_field_values(var_name, var_map)
         
         context = self._build_context(**options)
         template = self.PLOT_FORM_TEMPLATE
         
-        return self._render_response(start_response, template, context)
+        return self._render_response(template, context)
     
-    def generate(self, start_response):
+    def generate(self):
         """
         Generate's a plot of the data using input from
         the user's form submission.
@@ -168,7 +191,10 @@ class FilePlotView:
         y_var_miss = []
         
         # Read the NA file
-        na = read_data(self.file_path)
+        try:
+            na = read_data(self.file_path)
+        except NAReadException as e:
+            return self._error_response(str(e))
         
         for i in range(na.NV):
             var_name = na.VNAME[i]
@@ -231,7 +257,7 @@ class FilePlotView:
         app = DataPlotApp(file_object)
         
         # Begin response and return plotted graph
-        result = app.get(self.environ, start_response)
+        result = app.get(self.environ, self.start_response)
         return result
     
     def _parse_form_vars(self, form):
@@ -329,64 +355,6 @@ class FilePlotView:
         
         return field_values
     
-    def _render_response(self, start_response, template_file, context, response_code='200 OK'):
-        renderer = self.environ.get('pydap.renderer')
-        template = renderer.loader(template_file)
-        
-        content_type = 'text/html'
-        output = renderer.render(
-            template,
-            context,
-            output_format=content_type
-        )
-        
-        headers = [('Content-type', content_type)]
-        start_response(response_code, headers)
-        
-        return [output.encode('utf-8')]
-    
-    def _error_response(self, start_response, message, code = '400 Bad Request'):
-        context = {
-            'error_message': message,
-            'error_code': code
-        }
-        
-        return self._render_response(start_response, 'files_error.html', context, code)
-    
-    def _build_context(self, **kwargs):
-        '''
-        Constructs the context required for rendering a Jinja2 template
-        '''
-        
-        # Base URL.
-        location = construct_url(
-            self.environ,
-            with_query_string=False
-        )
-        
-        root = construct_url(
-            self.environ,
-            with_query_string=False,
-            with_path_info=False
-        )
-        root = root.rstrip('/')
-        
-        file_name = os.path.basename(self.file_path)
-        
-        img_url = location + self._build_img_vars()
-        
-        context = {
-            'environ': self.environ,
-            'root': root,
-            'location': location,
-            'file_name': file_name,
-            'img_url': img_url,
-        }
-        
-        context.update(kwargs)
-        
-        return context
-    
     def _build_img_vars(self):
         """
         Construct a string of HTML parameters from the current form values.
@@ -405,8 +373,12 @@ def read_data(file_path):
     Read data from a NASA Ames file
     """
     
-    na_file = nappy.openNAFile(file_path) 
-    na_file.readData()
+    try:
+        na_file = nappy.openNAFile(file_path)
+        na_file.readData()
+        
+    except (TypeError, ValueError):
+        raise NAReadException(os.path.basename(file_path) + " was not a valid NASA Ames file")
     
     return na_file
 
@@ -475,39 +447,3 @@ def should_omit(value, omit_value, omit_mode=Comparison.EQUALS.value):
         omit = value <= omit_value
     
     return omit
-
-def validate_path(application_root, path):
-    """
-    Checks that the given file specification is valid.  
-    
-    Performs security checks on the given file specification to make sure that
-    it does not try and use invalid characters or access a directory that it is
-    not allowed to.
-    
-    If successful then an 'untainted' copy of the given filespecification is
-    returned. This must be used to prevent failure when the program is run as
-    a setuid script. If the checks failed then undef is returned.
-    
-    Have now added a separate check for file in the 'requests' directory. User
-    is only allowed to see their own sub-directory.
-    
-    @param application_root: top level directory for serving files
-    """
-    
-    # Check for "../", which could be used to change directory
-    path = os.path.abspath(path)
-    
-    # Remove any trailing slash
-    path = path.rstrip(os.path.sep)
-    
-    # Check that path exists
-    if not os.path.exists(path):
-        raise ValueError('Path does not exist')
-    
-    # Check that the path and application have a common root
-    prefix = os.path.commonprefix([path, application_root])
-    
-    if not prefix == application_root:
-        raise ValueError('Path root does not match application root')
-    
-    return path
