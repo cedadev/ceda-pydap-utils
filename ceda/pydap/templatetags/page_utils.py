@@ -37,6 +37,7 @@ def get_readme_title(directory):
     except IOError:
         pass
     
+    readme_title = unicode(readme_title, 'utf-8')
     return readme_title
 
 def calculate_dimensions(child):

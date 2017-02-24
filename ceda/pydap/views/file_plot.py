@@ -301,7 +301,9 @@ class FilePlotView(ViewResponse):
         x_map = []
         o_map = []
         
-        x_map.append(('-1', na.XNAME[0]))
+        default_x = na.XNAME[0]
+        
+        x_map.append(('-1', default_x))
         
         for i in range(len(na.VNAME)):
             var_name = na.VNAME[i]
@@ -311,7 +313,7 @@ class FilePlotView(ViewResponse):
             x_map.append(mapping)
             o_map.append(mapping)
         
-        y_map.append(('-2', na.XNAME[0]))
+        y_map.append(('-2', default_x))
         
         self.form_map['var'] = y_map
         self.form_defaults['var'] = '0'
