@@ -21,6 +21,8 @@ from urllib2 import unquote
 
 from urlparse import urlparse
 
+from ceda.pydap.utils.codecs import decode_multi
+
 logger = logging.getLogger(__name__)
 
 README_NAME = '00README'
@@ -28,16 +30,19 @@ README_NAME = '00README'
 NA_MATCH_REGEX = '.*\.(na)$'
 
 def get_readme_title(directory):
-    readme_title = ''
     readme_path = os.path.join(directory, README_NAME)
+    
+    contents = ''
     try:
         with open(readme_path, 'r') as readme:
-            first_line = readme.readline()
-            readme_title = first_line.strip()
+            contents = readme.readline().strip()
     except IOError:
         pass
     
-    readme_title = unicode(readme_title, 'utf-8')
+    readme_title = decode_multi(contents)
+    if not readme_title:
+        readme_title = ''
+    
     return readme_title
 
 def calculate_dimensions(child):

@@ -15,6 +15,7 @@ from enum import Enum
 from ceda.pydap.views.response.response import DataPlotApp
 from ceda.pydap.views.view_response import ViewResponse
 from ceda.pydap.utils.file.path_utils import validate_path
+from ceda.pydap.utils.codecs import decode_multi
 
 matplotlib.use('Agg')
 from matplotlib import pyplot
@@ -207,7 +208,7 @@ class FilePlotView(ViewResponse):
             return self._error_response(str(e))
         
         for i in range(na.NV):
-            var_name = na.VNAME[i]
+            var_name = decode_multi(na.VNAME[i])
             
             # Grab data matching our variable names
             if var_name == x_var_name:
@@ -220,7 +221,7 @@ class FilePlotView(ViewResponse):
                 omit_var_data = na.V[i]
         
         # The default X variable is selected separately
-        default_x_name = na.XNAME[0]
+        default_x_name = decode_multi(na.XNAME[0])
         if default_x_name == x_var_name:
             x_var_data = na.X
         if default_x_name == y_var_name:
@@ -301,12 +302,12 @@ class FilePlotView(ViewResponse):
         x_map = []
         o_map = []
         
-        default_x = na.XNAME[0]
+        default_x = decode_multi(na.XNAME[0])
         
         x_map.append(('-1', default_x))
         
         for i in range(len(na.VNAME)):
-            var_name = na.VNAME[i]
+            var_name = decode_multi(na.VNAME[i])
             mapping = (str(i), var_name)
             
             y_map.append(mapping)
