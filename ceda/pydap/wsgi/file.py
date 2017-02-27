@@ -35,6 +35,7 @@ CEDA_HOME_URL = 'http://www.ceda.ac.uk/'
 
 SAML_TRUSTED_CA_DIR = ''
 AUTHZ_SERVICE_URI = ''
+ATTR_SERVICE_URI = ''
 
 class CEDAFileServer(FileServer):
     
@@ -54,8 +55,9 @@ class CEDAFileServer(FileServer):
         self.login_url = config.get('login_url', LOGIN_URL)
         self.home_url = config.get('home_url', CEDA_HOME_URL)
         
-        self.saml_trusted_ca_dir = config.get('authz_decision_query_binding.saml_trusted_ca_dir', SAML_TRUSTED_CA_DIR)
+        self.saml_trusted_ca_dir = config.get('saml_trusted_ca_dir', SAML_TRUSTED_CA_DIR)
         self.authz_service_uri = config.get('authz_service_uri', AUTHZ_SERVICE_URI)
+        self.attr_service_uri = config.get('attr_service_uri', ATTR_SERVICE_URI)
     
     def __call__(self, environ, start_response):
         path_info = environ.get('PATH_INFO', '')
@@ -67,6 +69,7 @@ class CEDAFileServer(FileServer):
         
         environ['saml_trusted_ca_dir'] = self.saml_trusted_ca_dir
         environ['authz_service_uri'] = self.authz_service_uri
+        environ['attr_service_uri'] = self.attr_service_uri
         
         environ.setdefault('pydap.renderer', self.renderer)
         

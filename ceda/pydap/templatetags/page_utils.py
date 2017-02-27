@@ -22,6 +22,7 @@ from urllib2 import unquote
 from urlparse import urlparse
 
 from ceda.pydap.utils.codecs import decode_multi
+from ceda.pydap.utils.saml import userid_query
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,9 @@ def parse_cookie(environ, key):
     if cookie:
         cookie_value = cookie.value
     return cookie_value
+
+def userid(environ, openid):
+    return userid_query(environ, openid)
 
 def is_na_file(environ, file_name):
     na_pattern = re.compile(NA_MATCH_REGEX)
