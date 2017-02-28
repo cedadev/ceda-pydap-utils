@@ -27,7 +27,7 @@ except IOError:
 
 setup(
     name = 'ceda-pydap-utils',
-    version = '0.2.1',
+    version = '0.3.1',
     description = SHORT_DESCR,
     long_description = LONG_DESCR,
     author = 'William Tucker',
