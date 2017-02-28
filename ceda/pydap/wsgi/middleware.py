@@ -91,8 +91,8 @@ class LogoutFilter(object):
             prefix = ''
         
         self.path = '/'
-        self.domain = config.get(prefix + 'domain')
-        self.logout_path = config.get(prefix + 'logout_path')
+        self.domain = config.get(prefix + 'domain', '')
+        self.logout_path = config.get(prefix + 'logout_path', '/logout')
         
         # Cookies to clear on logout
         cookie_string = config.get(prefix + 'cookies')
@@ -111,9 +111,9 @@ class LogoutFilter(object):
     def __call__(self, environ, start_response):
         path_info = environ.get('PATH_INFO', '')
         
-        if path_info == '/logout':
+        if path_info == self.logout_path:
             log.debug("LogoutFilter.__call__: caught sign out "
-                      "path [{0}]".format('/logout'))
+                      "path [{0}]".format(self.logout_path))
             
             start_response = self._clear_cookies(start_response)
         
