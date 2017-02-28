@@ -6,6 +6,10 @@ Created on 30 Jan 2017
 
 import os
 
+from wsgiref.handlers import format_date_time
+from datetime import datetime
+from time import mktime
+
 from paste.request import construct_url
 from paste.httpexceptions import HTTPSeeOther
 
@@ -71,3 +75,66 @@ class DirectoryFilter(object):
         url = construct_url(environ) + '/'
         
         return HTTPSeeOther(url)(environ, start_response)
+
+
+class LogoutFilter(object):
+    """
+    A simple middleware for clearing cookies on logout
+    """
+    
+    def __init__(self, app, prefix=None, **config):
+        self._app = app
+        
+        if prefix:
+            prefix = prefix + '.'
+        else:
+            prefix = ''
+        
+        self.path = '/'
+        self.domain = config.get(prefix + 'domain')
+        self.logout_path = config.get(prefix + 'logout_path')
+        
+        # Cookies to clear on logout
+        cookie_string = config.get(prefix + 'cookies')
+        if cookie_string:
+            cookie_string = "".join(cookie_string.split())
+            self.cookies = cookie_string.split(',')
+        else:
+            self.cookies = []
+    
+    @classmethod
+    def filter_app_factory(cls, app, global_conf, prefix=None, **config):
+        directory_filter = cls(app, prefix, **config)
+        
+        return directory_filter
+    
+    def __call__(self, environ, start_response):
+        path_info = environ.get('PATH_INFO', '')
+        
+        if path_info == '/logout':
+            log.debug("LogoutFilter.__call__: caught sign out "
+                      "path [{0}]".format('/logout'))
+            
+            start_response = self._clear_cookies(start_response)
+        
+        return self._app(environ, start_response)
+    
+    def _clear_cookies(self, start_response):
+        
+        def _start_response(status, header, exc_info=None):
+            """Alter the header to tell session cookies to expire"""
+            
+            stamp = mktime(datetime.min.timetuple())
+            expires = format_date_time(stamp)
+            cookies = []
+            
+            for cookie in self.cookies:
+                cookies.append(
+                    ('Set-Cookie', '{0}=""; Path={1}; Domain={2}; Expires={3}'.format(
+                    cookie, self.path, self.domain, expires))
+                )
+            header.extend(cookies)
+            
+            return start_response(status, header, exc_info)
+        
+        return _start_response
