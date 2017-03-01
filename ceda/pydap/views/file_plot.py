@@ -128,10 +128,14 @@ class FilePlotView(ViewResponse):
         self.form_defaults = self.FORM_DEFAULTS.copy()
         
         # retrieve variable information from the NA file
+        self.na_file_error = None
         try:
             self._parse_variables()
         except NAReadException as e:
-            logger.debug(str(e))
+            error_message = str(e)
+            
+            self.na_file_error = error_message
+            logger.debug(error_message)
         
         # set form vars using defaults or user-submitted values
         self.form_vars = self._parse_form_vars(form)
@@ -152,7 +156,8 @@ class FilePlotView(ViewResponse):
         
         options = {
             'file_name': file_name,
-            'img_url': img_url
+            'img_url': img_url,
+            'na_file_error': self.na_file_error
         }
         for var_name, var_map in self.form_map.items():
             options[var_name] = self._get_field_values(var_name, var_map)
@@ -390,12 +395,15 @@ def read_data(file_path):
     Read data from a NASA Ames file
     """
     
+    filename = os.path.basename(file_path)
     try:
         na_file = nappy.openNAFile(file_path)
         na_file.readData()
         
-    except (TypeError, ValueError):
-        raise NAReadException(os.path.basename(file_path) + " was not a valid NASA Ames file")
+    except (TypeError, ValueError) as e:
+        raise NAReadException("{0} was not a valid NASA Ames file: {1}".format(filename, e))
+    except Exception as e:
+        raise NAReadException("{0} was not a valid NASA Ames file".format(filename))
     
     return na_file
 

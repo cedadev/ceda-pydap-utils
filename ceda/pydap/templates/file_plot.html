@@ -1,25 +1,55 @@
-<html>
+<html xmlns="http://www.w3.org/1999/xhtml">
   
   <head>
-    <title>
-      Plot data file
-    </title>
+    <title>Plot data file</title>
+    
+    <link type="text/css" href="{{ root }}/.static/css/blitzer/jquery-ui-1.8.2.custom.css" rel="stylesheet" />
+    
+    <link rel="stylesheet" type="text/css" media="screen" href="{{ root }}/.static/mf54/css/mf54_reset.css" />
+    <link rel="stylesheet" type="text/css" media="screen" href="{{ root }}/.static/mf54/css/mf54_grid_nosidebar.css" />
+    <link rel="stylesheet" type="text/css" media="screen" href="{{ root }}/.static/mf54/css/mf54_content_nosidebar.css" />
+    
+    <link type="text/css" href="{{ root }}/.static/css/ceda_custom.css" rel="stylesheet" />
+    
+    <style>
+      body {
+        background-color: white;
+      }
+      .plot {
+        margin: auto;
+      }
+      .plot-form {
+        width: 800px;
+      }
+      .warning {
+        margin: 4px 2px;
+      }
+    </style>
   </head>
   
   <body>
+  <div class="plot">
     <div>
-      <img border="1" src="{{ img_url }}" height="400" width="650">
+      <img border="1" src="{{ img_url }}" height="440" width="715">
     </div>
     
+    {% if na_file_error %}
     <div>
-    <form method="get" action="{{ location }}">
-    <table border="1">
+      <ul class="messages" style="color: #FF0000;">
+        <li class="warning">{{ na_file_error }}</li>
+      </ul>
+    </div>
+    {% endif %}
+    
+    <div>
+    <form class="plot-form" method="get" action="{{ location }}">
+    <table border="1" bgcolor="#ADD8E6">
     <tr>
     <td>
     <table border="1">
       <tr>
       <td>
-        <b>Plot: </b>
+        <b>Plot:</b>
         <input type="hidden" name="plot" value="">
       </td>
       <td colspan="2">
@@ -40,7 +70,7 @@
       </tr>
       <tr>
       <td>
-      <b>Omit points: </b> 
+      <b>Omit points:</b> 
       </td>
       <td colspan="2">
         Where: 
@@ -59,7 +89,7 @@
       </tr>
       <tr>
       <td>
-        <b>Scale </b>
+        <b>Scale:</b>
       </td>
       <td colspan="2" nowrap>
         Ymin: 
@@ -75,7 +105,7 @@
       </tr>
       <tr>
       <td>
-      <b>Plot Symbol</b>
+      <b>Plot Symbol:</b>
       </td>
       <td nowrap>
         {% for value, name, selected in symbol %}
@@ -89,13 +119,13 @@
         {% endfor %}
       </td>
       </tr>
-    </table>
-    </td>
-    </tr>
-    </table>
-  </form>
+      </table>
+      </td>
+      </tr>
+      </table>
+    </form>
+    </div>
   </div>
-
   </body>
   
 </html>
