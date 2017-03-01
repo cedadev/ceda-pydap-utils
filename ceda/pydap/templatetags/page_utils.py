@@ -10,7 +10,6 @@ __license__ = "BSD - see LICENSE file in top-level directory"
 import os
 import re
 import logging
-import nappy
 
 from __builtin__ import len
 from __builtin__ import isinstance
@@ -23,6 +22,7 @@ from urlparse import urlparse
 
 from ceda.pydap.utils.codecs import decode_multi
 from ceda.pydap.utils.saml import userid_query
+from ceda.pydap.utils.file.nasa_ames import is_nasa_ames
 
 logger = logging.getLogger(__name__)
 
@@ -95,9 +95,4 @@ def is_na_file(environ, file_name):
     )))
     assert file_path.startswith(root) # check for ".." exploit
     
-    try:
-        na_file = nappy.openNAFile(file_path)
-        if na_file:
-            return True
-    except (TypeError, ValueError):
-        return False
+    return is_nasa_ames(file_path)
