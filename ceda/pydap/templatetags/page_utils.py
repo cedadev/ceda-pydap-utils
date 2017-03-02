@@ -105,3 +105,7 @@ def is_na_file(environ, file_name):
     assert file_path.startswith(root) # check for ".." exploit
     
     return is_nasa_ames(file_path)
+
+def read_data_path(path):
+    
+    return None
