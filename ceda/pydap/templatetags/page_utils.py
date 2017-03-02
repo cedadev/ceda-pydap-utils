@@ -21,7 +21,7 @@ from urllib2 import unquote
 from urlparse import urlparse
 
 from ceda.pydap.utils.codecs import decode_multi
-from ceda.pydap.utils.saml import userid_query
+from ceda.pydap.utils.saml import get_user_details
 from ceda.pydap.utils.file.nasa_ames import is_nasa_ames
 
 logger = logging.getLogger(__name__)
@@ -77,7 +77,16 @@ def parse_cookie(environ, key):
     return cookie_value
 
 def userid(environ, openid):
-    return userid_query(environ, openid)
+    
+    userid = None
+    details = get_user_details(environ, openid)
+    if details:
+        userid = details.get('first_name')
+    
+    if not userid:
+        userid = openid
+    
+    return userid
 
 def is_na_file(environ, file_name):
     na_pattern = re.compile(NA_MATCH_REGEX)

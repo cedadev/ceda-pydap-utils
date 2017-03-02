@@ -11,21 +11,25 @@ from uuid import uuid4
 
 from OpenSSL.SSL import Error
 
-from urllib2 import URLError
-
 from ndg.saml.saml2.binding.soap.client.attributequery import \
                                                     AttributeQuerySslSOAPBinding
 from ndg.saml.saml2.binding.soap.client.requestbase import RequestResponseError
 from ndg.saml.saml2.core import (AttributeQuery, SAMLVersion, Attribute, Issuer,
                                  Subject, NameID, DecisionType)
 
-from ndg.soap.client import UrlLib2SOAPClientError
-from ndg.saml.saml2.core import (Issuer, Subject, NameID)
+from urllib2 import URLError
+
 from ndg.saml.saml2.binding.soap.client.authzdecisionquery import \
                                             AuthzDecisionQuerySslSOAPBinding
 from ndg.saml.utils.factory import AuthzDecisionQueryFactory
+from ndg.soap.client import UrlLib2SOAPClientError
 
 logger = logging.getLogger(__name__)
+
+
+ATTRIBUTE_FIRST_NAME = 'urn:esg:first:name'
+ATTRIBUTE_LAST_NAME = 'urn:esg:last:name'
+ATTRIBUTE_EMAIL_ADDRESS = 'urn:esg:email:address'
 
 
 def get_authz_decision(environ, url, remote_user):
@@ -97,7 +101,17 @@ def get_authz_decision(environ, url, remote_user):
     
     return assertion
 
-def userid_query(environ, openid):
+def attribute_query(environ, attribute_requests, subject_id, subject_id_format='urn:esg:openid'):
+    """
+    Make a query for a set of attributes
+    Returns a dictionary of values for each attribute in the query
+    
+    @param attribute_requests: SAML Attribute instances
+    @param subject_id: The ID of the subject, e.g. openid
+    @param subject_id_format: optional format of the ID, default is openid
+    """
+    
+    # Grab info from the environ
     saml_trusted_ca_dir = environ.get('saml_trusted_ca_dir', '')
     attr_service_uri = environ.get('attr_service_uri', '')
     
@@ -118,31 +132,79 @@ def userid_query(environ, openid):
     
     query.subject = Subject()
     query.subject.nameID = NameID()
-    query.subject.nameID.format = "urn:esg:openid"
-    query.subject.nameID.value = openid
+    query.subject.nameID.format = subject_id_format
+    query.subject.nameID.value = subject_id
     
-    # Specify what attribute to query for
-    id_attr = Attribute()
-    id_attr.name = "urn:esg:first:name"
-    id_attr.nameFormat = "http://www.w3.org/2001/XMLSchema#string"
+    # Specify what attributes to query for
+    for attribute_request in attribute_requests:
+        query.attributes.append(attribute_request)
     
-    query.attributes.append(id_attr)
-    
-    userid = openid
     try:
         response = client_binding.send(query, uri=attr_service_uri)
+        attribute_results = {}
         
         assertion = next(iter(response.assertions or []), None)
         if assertion:
             statement = next(iter(assertion.attributeStatements or []), None)
             if statement:
-                attribute = next(iter(statement.attributes or []), None)
-                if attribute:
-                    attr_value = next(iter(attribute.attributeValues or []), None)
-                    if attr_value:
-                        userid = attr_value.value;
+                for attribute in statement.attributes:
+                    values = []
+                    for attribute_value in attribute.attributeValues:
+                        values.append(attribute_value.value)
+                    
+                    attribute_results[attribute.name] = values
+        
+        return attribute_results
         
     except (RequestResponseError, Error) as e:
-        logger.error("Error processing SOAP query for {0}: {1}".format(openid, e))
+        logger.error("Error processing SOAP query for {0}: {1}".format(id, e))
+
+def get_attribute_value(environ, openid, attribute):
+    """
+    Return a single value for an attribute
+    """
     
-    return userid
+    value = None
+    result = attribute_query(environ, [attribute], openid)
+    
+    values = result.get(attribute.name)
+    if values:
+        value = next(iter(values or []), None)
+    
+    return value
+
+def get_user_details(environ, openid):
+    """
+    Return a dictionary containing a user's
+    first name, last name and email address
+    """
+    
+    attribute_names = [
+        ('first_name', ATTRIBUTE_FIRST_NAME),
+        ('last_name', ATTRIBUTE_LAST_NAME),
+        ('email_address', ATTRIBUTE_EMAIL_ADDRESS)
+    ]
+    
+    attributes = []
+    for _, name in attribute_names:
+        attribute = Attribute()
+        attribute.name = name
+        attribute.nameFormat = 'http://www.w3.org/2001/XMLSchema#string'
+        
+        attributes.append(attribute)
+    
+    result = attribute_query(environ, attributes, openid)
+    
+    if result:
+        user_details = {}
+        for attribute_name in attribute_names:
+            name, index = attribute_name
+            values = result.get(index)
+            
+            value = values
+            if values and len(values) == 1:
+                value = values[0]
+            
+            user_details[name] = value
+        
+        return user_details
