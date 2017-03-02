@@ -108,4 +108,9 @@ def is_na_file(environ, file_name):
 
 def read_data_path(path):
     
+    # we want to return a data structure with the attributes:
+    # type - e.g. Dataset or Dataset Collection
+    # description - short description of the data
+    # link - a MOLES catalogue link for the data
+    
     return None
