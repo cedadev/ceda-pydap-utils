@@ -198,13 +198,13 @@ def get_user_details(environ, openid):
     if result:
         user_details = {}
         for attribute_name in attribute_names:
-            name, index = attribute_name
-            values = result.get(index)
+            index, name = attribute_name
+            values = result.get(name)
             
             value = values
             if values and len(values) == 1:
                 value = values[0]
             
-            user_details[name] = value
+            user_details[index] = value
         
         return user_details
