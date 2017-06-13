@@ -11,6 +11,7 @@ import subprocess
 import logging
 from ceda.pydap.views.view_response import ViewResponse
 from ceda.pydap.utils.file.path_utils import validate_path
+from ceda.pydap.utils.action_log import format_action_message
 logger = logging.getLogger(__name__)
 
 from paste.request import construct_url
@@ -214,6 +215,15 @@ class MultiFileView(ViewResponse):
         Returns a view listing information about files to be downloaded
         """
         
+        # Log action
+        logger.info(
+            format_action_message(
+                self.environ,
+                'MultiFileView.list_files',
+                'listing files with glob "{}"'.format(self.glob_string)
+            )
+        )
+        
         web_files = self.multi_file_handler.files
         web_files = sorted(web_files)
         
@@ -265,6 +275,15 @@ class MultiFileView(ViewResponse):
         @param directory: Reference to path of the active directory
         @param glob: Filename glob specifying files to be downloaded
         """
+        
+        # Log action
+        logger.info(
+            format_action_message(
+                self.environ,
+                'MultiFileView.download_files',
+                'downloading files with glob "{}"'.format(self.glob_string)
+            )
+        )
         
         # Check total size of files and exit with error message if too big
         _, _, allowed_size = self.multi_file_handler.file_stats()

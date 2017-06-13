@@ -16,6 +16,7 @@ from ceda.pydap.views.response.response import DataPlotApp
 from ceda.pydap.views.view_response import ViewResponse
 from ceda.pydap.utils.file.path_utils import validate_path
 from ceda.pydap.utils.codecs import decode_multi
+from ceda.pydap.utils.action_log import format_action_message
 
 matplotlib.use('Agg')
 from matplotlib import pyplot
@@ -146,6 +147,15 @@ class FilePlotView(ViewResponse):
         Page contains the user input form and plot output img element
         """
         
+        # Log action
+        logger.info(
+            format_action_message(
+                self.environ,
+                'FilePlotView.form',
+                'loading file plot form'
+            )
+        )
+        
         file_name = os.path.basename(self.file_path)
         
         location = construct_url(
@@ -173,6 +183,15 @@ class FilePlotView(ViewResponse):
         the user's form submission.
         Handles streaming of img reponse to user.
         """
+        
+        # Log action
+        logger.info(
+            format_action_message(
+                self.environ,
+                'FilePlotView.generate',
+                'generating file plot image'
+            )
+        )
         
         # Define limits each axis
         
