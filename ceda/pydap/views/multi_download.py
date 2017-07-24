@@ -254,6 +254,9 @@ class MultiFileView(ViewResponse):
         context = self._build_context()
         
         n_allowed, n_forbidden, allowed_size = self.multi_file_handler.file_stats()
+        if allowed_size > MAX_DOWNLOAD_SIZE:
+            over_size_limit = True
+        
         context.update({
             'glob': self.glob_string,
             'depth': self.depth,
