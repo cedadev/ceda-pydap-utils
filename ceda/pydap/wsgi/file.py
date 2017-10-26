@@ -58,6 +58,7 @@ class CEDAFileServer(FileServer):
         
         self.login_url = config.get('login_url', LOGIN_URL)
         self.home_url = config.get('home_url', CEDA_HOME_URL)
+        self.record_info_uri = config.get('record_info_uri')
         
         self.saml_trusted_ca_dir = config.get('saml_trusted_ca_dir', SAML_TRUSTED_CA_DIR)
         self.authz_service_uri = config.get('authz_service_uri', AUTHZ_SERVICE_URI)
@@ -70,6 +71,7 @@ class CEDAFileServer(FileServer):
         
         environ['login_url'] = self.login_url
         environ['home_url'] = self.home_url
+        environ['record_info_uri'] = self.record_info_uri
         
         environ['saml_trusted_ca_dir'] = self.saml_trusted_ca_dir
         environ['authz_service_uri'] = self.authz_service_uri

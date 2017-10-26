@@ -9,16 +9,20 @@ __license__ = "BSD - see LICENSE file in top-level directory"
 
 import os
 import re
+import requests
 import logging
 
 from __builtin__ import len
-from __builtin__ import isinstance
-from __builtin__ import enumerate
+from __builtin__ import isinstance #@UnusedImport
+from __builtin__ import enumerate #@UnusedImport
 
-from urllib2 import quote
-from urllib2 import unquote
+from urllib2 import quote #@UnusedImport
+from urllib2 import unquote #@UnusedImport
 
-from urlparse import urlparse
+from urlparse import urlparse #@UnusedImport
+from urlparse import urljoin
+
+from requests.exceptions import Timeout, RequestException
 
 from ceda.pydap.utils.codecs import decode_multi
 from ceda.pydap.utils.saml import get_user_details
@@ -29,6 +33,8 @@ logger = logging.getLogger(__name__)
 README_NAME = '00README'
 
 NA_MATCH_REGEX = '.*\.(na)$'
+
+TIMEOUT_SECONDS = 5
 
 def get_readme_title(directory):
     readme_path = os.path.join(directory, README_NAME)
@@ -106,11 +112,25 @@ def is_na_file(environ, file_name):
     
     return is_nasa_ames(file_path)
 
-def read_data_path(path):
+def record_info_for_path(environ, path):
+    # retrieve data structure with the attributes:
+    # record_type - e.g. Dataset or Dataset Collection
+    # title - title of the record
+    # url - a MOLES catalogue link
     
-    # we want to return a data structure with the attributes:
-    # type - e.g. Dataset or Dataset Collection
-    # description - short description of the data
-    # link - a MOLES catalogue link for the data
+    record_info_uri = environ.get('record_info_uri')
+    if not record_info_uri:
+        return None
     
-    return None
+    record_info_query = urljoin(record_info_uri, path.strip('/'))
+    
+    info = None
+    try:
+        response = requests.get(record_info_query, timeout=TIMEOUT_SECONDS)
+        info = response.json()
+    except Timeout as e:
+        logger.warn("Timeout while querying the catalogue for dataset path {}".format(path))
+    except (ValueError, RequestException) as e:
+        logger.error("Exception while querying the catalogue: {}".format(e))
+    
+    return info

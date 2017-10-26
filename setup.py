@@ -27,7 +27,7 @@ except IOError:
 
 setup(
     name = 'ceda-pydap-utils',
-    version = '0.3.3',
+    version = '0.3.4',
     description = SHORT_DESCR,
     long_description = LONG_DESCR,
     author = 'William Tucker',
@@ -39,6 +39,7 @@ setup(
     install_requires = [
         'pydap',
         'jinja2',
+        'requests',
     ],
     dependency_links = ["http://dist.ceda.ac.uk/pip/"],
     packages = find_packages(),
