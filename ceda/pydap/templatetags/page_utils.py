@@ -76,11 +76,16 @@ def build_breadcrumbs(environ, mount_path, pathlist):
     return breadcrumbs
 
 def parse_cookie(environ, key):
-    cookie = environ.get('paste.cookies')[0].get(key)
-    cookie_value = None
-    if cookie:
-        cookie_value = cookie.value
-    return cookie_value
+    cookies = environ.get('paste.cookies')
+    
+    if cookies:
+        
+        cookie = cookies[0].get(key)
+        cookie_value = None
+        if cookie:
+            cookie_value = cookie.value
+            
+        return cookie_value
 
 def userid(environ, openid):
     
