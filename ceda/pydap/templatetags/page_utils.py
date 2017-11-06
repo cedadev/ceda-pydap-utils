@@ -133,6 +133,10 @@ def record_info_for_path(environ, path):
     try:
         response = requests.get(record_info_query, timeout=TIMEOUT_SECONDS)
         info = response.json()
+        
+        if not info.get('url'):
+            return None
+        
     except Timeout as e:
         logger.warn("Timeout while querying the catalogue for dataset path {}".format(path))
     except (ValueError, RequestException) as e:
