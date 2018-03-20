@@ -297,7 +297,7 @@ class MultiFileView(ViewResponse):
         web_files = self.multi_file_handler.files
         
         # Compose subprocess command for generating a zip
-        cmd = ['timeout', '6000', 'nice', 'zip', '-Z', 'store', '-b', '-O', '-']
+        cmd = ['timeout', '6000', 'nice', 'zip', '-Z', 'store', '-b', '-6', '-']
         base_path = self.directory
         for web_file in web_files:
             filename = os.path.relpath(web_file.full_path, base_path)
