@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 README_NAME = '00README'
 
 NA_MATCH_REGEX = '.*\.(na)$'
+VIEWABLE_MATCH_REGEX = '.*\.(txt|html)$'
 
 TIMEOUT_SECONDS = 5
 
@@ -116,6 +117,12 @@ def is_na_file(environ, file_name):
     assert file_path.startswith(root) # check for ".." exploit
     
     return is_nasa_ames(file_path)
+
+def is_viewable(file_name):
+    
+    viewable_pattern = re.compile(VIEWABLE_MATCH_REGEX)
+    if viewable_pattern.match(file_name):
+        return True
 
 def record_info_for_path(environ, path):
     # retrieve data structure with the attributes:
