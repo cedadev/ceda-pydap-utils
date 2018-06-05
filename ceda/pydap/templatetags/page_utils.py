@@ -26,7 +26,6 @@ from requests.exceptions import Timeout, RequestException
 
 from ceda.pydap.utils.codecs import decode_multi
 from ceda.pydap.utils.saml import get_user_details
-from ceda.pydap.utils.file.nasa_ames import is_nasa_ames
 
 logger = logging.getLogger(__name__)
 
@@ -100,23 +99,13 @@ def userid(environ, openid):
     
     return userid
 
-def is_na_file(environ, file_name):
-    na_pattern = re.compile(NA_MATCH_REGEX)
+def is_na_file(file_name):
     
+    na_pattern = re.compile(NA_MATCH_REGEX)
     if na_pattern.match(file_name):
         return True
     
-    path_info = environ.get('PATH_INFO', '').lstrip('/').replace('/', os.path.sep)
-    root = environ.get('file_root')
-    
-    file_path = os.path.abspath(os.path.normpath(os.path.join(
-        root,
-        path_info,
-        file_name
-    )))
-    assert file_path.startswith(root) # check for ".." exploit
-    
-    return is_nasa_ames(file_path)
+    return False
 
 def is_viewable(file_name):
     
